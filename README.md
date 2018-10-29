@@ -12,5 +12,5 @@ Students are expected to:
 Student Info
 =======================
 
-* Name: MyName
+* Name: Arthur Brugiere
 * ID: *YourIdHere*
