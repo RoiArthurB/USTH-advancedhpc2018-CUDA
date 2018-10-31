@@ -48,6 +48,7 @@ int main(int argc, char **argv) {
         case 3:
             labwork.labwork3_GPU();
             labwork.saveOutputImage("labwork3-gpu-out.jpg");
+            printf("labwork 3 GPU CUDA ellapsed %.1fms\n", lwNum, timer.getElapsedTimeInMilliSec());
             break;
         case 4:
             labwork.labwork4_GPU();
@@ -146,8 +147,42 @@ int getSPcores(cudaDeviceProp devProp) {
     return cores;
 }
 
+//Get to know your GPU
 void Labwork::labwork2_GPU() {
-    
+    int nDevices;
+    // get all devices
+    cudaGetDeviceCount(&nDevices);
+    for (int i = 0; i < nDevices; i++){
+        //get informations from individual device
+        cudaDeviceProp prop
+        cudaGetDeviceProperties(&prop, i);
+
+        //Device info
+        //=================
+        printf("Device Number : %d\n", i)
+        printf("Device Name : %s\n", prop.name)
+
+        //Core info
+        //=================
+        //clock rate
+        printf("\tClock Rate (KHz): %f\n", prop.clockRate);
+        //core counts
+        printf("\tCore Number : %d\n", getSPcores(prop))
+        //multiprocessor count
+        printf("\tMultiprocessor Number : %d\n", prop.multiProcessorCount)
+        //warp size
+        printf("\tWarp Size : %d\n", prop.warpSize)
+
+        //Memory info
+        //=================
+        //clock rate
+        printf("\tMemory Clock Rate (KHz): %f\n", prop.memoryClockRate);
+        //bus width 
+        printf("\tMemory Bus Width (bits): %d\n", prop.memoryBusWidth);
+        //[optional] bandwidth
+        printf("\tPeak Memory Bandwidth (GB/s): %f\n\n", 2.0*prop.memoryClockRate*(prop.memoryBusWidth/8)/1.0e6);
+    }
+
 }
 
 void Labwork::labwork3_GPU() {
