@@ -50,6 +50,15 @@ int main(int argc, char **argv) {
             labwork.saveOutputImage("labwork3-gpu-out.jpg");
             printf("labwork 3 GPU CUDA ellapsed %.1fms\n", lwNum, timer.getElapsedTimeInMilliSec());
             break;
+        case 31:    // See difference with OpenMP
+            timer.start();
+            labwork.labwork1_OpenMP();
+            labwork.saveOutputImage("labwork3-openmp-out.jpg");
+            printf("labwork 1 GPU ellapsed %.1fms\n", lwNum, timer.getElapsedTimeInMilliSec());
+            labwork.labwork3_GPU();
+            labwork.saveOutputImage("labwork3-gpu-out.jpg");
+            printf("labwork 3 GPU CUDA ellapsed %.1fms\n", lwNum, timer.getElapsedTimeInMilliSec());
+            break;
         case 4:
             labwork.labwork4_GPU();
             labwork.saveOutputImage("labwork4-gpu-out.jpg");
