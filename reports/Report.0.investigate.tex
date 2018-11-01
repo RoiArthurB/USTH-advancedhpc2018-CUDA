@@ -1,0 +1,99 @@
+% !TEX TS-program = pdflatex
+% !TEX encoding = UTF-8 Unicode
+
+\documentclass[11pt]{article} % use larger type; default would be 10pt
+
+\usepackage[utf8]{inputenc} % set input encoding (not needed with XeLaTeX)
+
+%%% PAGE DIMENSIONS
+\usepackage{geometry}
+\geometry{a4paper}
+
+\usepackage{graphicx} % support the \includegraphics command and options
+
+% \usepackage[parfill]{parskip} % Activate to begin paragraphs with an empty line rather than an indent
+
+%%% PACKAGES
+\usepackage{booktabs} % for much better looking tables
+\usepackage{array} 	  % for better arrays (eg matrices) in maths
+\usepackage{paralist} % very flexible & customisable lists (eg. enumerate/itemize, etc.)
+\usepackage{verbatim} % adds environment for commenting out blocks of text & for better verbatim
+\usepackage{subfig}   % make it possible to include more than one captioned figure/table in a single float
+\usepackage{listings} % for code presentation
+% These packages are all incorporated in the memoir class to one degree or another...
+
+%%% HEADERS & FOOTERS
+\usepackage{fancyhdr} % This should be set AFTER setting up the page geometry
+\pagestyle{fancy} % options: empty , plain , fancy
+\renewcommand{\headrulewidth}{0pt} % customise the layout...
+\lhead{}\chead{}\rhead{} % Setup Header
+\lfoot{}\cfoot{\thepage}\rfoot{} % Setup Footer
+
+%%% SECTION TITLE APPEARANCE
+\usepackage{sectsty}
+\allsectionsfont{\sffamily\mdseries\upshape} % (See the fntguide.pdf for font help)
+% (This matches ConTeXt defaults)
+
+%%% ToC (table of contents) APPEARANCE
+%\usepackage[nottoc,notlof,notlot]{tocbibind} % Put the bibliography in the ToC
+%\usepackage[titles,subfigure]{tocloft} % Alter the style of the Table of Contents
+%\renewcommand{\cftsecfont}{\rmfamily\mdseries\upshape}
+%\renewcommand{\cftsecpagefont}{\rmfamily\mdseries\upshape} % No bold!
+
+%%% END Article customizations
+
+%%% The "real" document content comes below...
+
+\title{Report 0}
+\author{Arthur BRUGIERE}
+%\date{} % Activate to display a given date or no date (if empty),
+         % otherwise the current date is printed 
+
+\begin{document}
+\maketitle
+
+\section{How do you compile the labwork project?}
+
+Any {\it cmake} project is typically built as follows:
+
+\lstset{language=Bash}
+\begin{lstlisting}
+arthurbrugiere@ictserver3:~/advancedhpc2018/labwork$ mkdir build
+arthurbrugiere@ictserver3:~/advancedhpc2018/labwork$ cd build
+arthurbrugiere@ictserver3:~/advancedhpc2018/labwork/build$ cmake ..
+arthurbrugiere@ictserver3:~/advancedhpc2018/labwork/build$ make -j
+\end{lstlisting}
+
+\section{What do you need to compile the project?}
+
+To build it, you will need the following dependencies:
+
+\begin{itemize}
+	\item OS: GNU/Linux or macOS
+	\item CUDA SDK 7+ 
+	\item Compiler : 
+			\subitem  {\it nvcc} (bundled with CUDA SDK)
+			\subitem {\it gcc} 4.8+ (for C++11 standard support).
+	\item {\it libjpeg} to encode/decode JPEG files
+\end{itemize}
+
+Optional:
+
+\begin{itemize}
+\item  {\it cmake} can help you build even easier. A {\it CMakeLists.txt} is provided. If not, manual {\it nvcc} is still applicable.
+\end{itemize}
+
+\section{Write command and output for your compilation}
+
+\lstset{language=Bash}
+\begin{lstlisting}
+arthurbrugiere@ictserver3:~/advancedhpc2018/labwork/build$ ./labwork 1 ../data/eiffel.jpg
+USTH ICT Master 2018, Advanced Programming for HPC.
+Warming up...
+Starting labwork 1
+labwork 1 CPU ellapsed 3230.3ms
+labwork 1 GPU ellapsed 793.8ms
+labwork 1 ellapsed 793.8ms
+\end{lstlisting}
+
+\end{document}
