@@ -1,1 +1,5 @@
 labwork/build
+
+reports/*.aux
+reports/*.pdf
+reports/*.log
