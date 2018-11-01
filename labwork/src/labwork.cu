@@ -55,13 +55,36 @@ int main(int argc, char **argv) {
             labwork.labwork1_OpenMP();
             labwork.saveOutputImage("labwork3-openmp-out.jpg");
             printf("labwork 1 GPU ellapsed %.1fms\n", lwNum, timer.getElapsedTimeInMilliSec());
+            timer.start();
             labwork.labwork3_GPU();
             labwork.saveOutputImage("labwork3-gpu-out.jpg");
             printf("labwork 3 GPU CUDA ellapsed %.1fms\n", lwNum, timer.getElapsedTimeInMilliSec());
             break;
         case 4:
+            timer.start();
             labwork.labwork4_GPU();
             labwork.saveOutputImage("labwork4-gpu-out.jpg");
+            printf("labwork 4 GPU CUDA 2D Blocks ellapsed %.1fms\n", lwNum, timer.getElapsedTimeInMilliSec());
+            break;
+        case 41:    // See difference with OpenMP
+            timer.start();
+            labwork.labwork1_OpenMP();
+            labwork.saveOutputImage("labwork4-openmp-out.jpg");
+            printf("labwork 1 GPU ellapsed %.1fms\n", lwNum, timer.getElapsedTimeInMilliSec());
+            timer.start();
+            labwork.labwork4_GPU();
+            labwork.saveOutputImage("labwork4-gpu-out.jpg");
+            printf("labwork 4 GPU CUDA 2D Blocks ellapsed %.1fms\n", lwNum, timer.getElapsedTimeInMilliSec());
+            break;
+        case 42:    // See difference with OpenMP
+            timer.start();
+            labwork.labwork3_GPU();
+            labwork.saveOutputImage("labwork4-gpu-out.jpg");
+            printf("labwork 3 GPU CUDA ellapsed %.1fms\n", lwNum, timer.getElapsedTimeInMilliSec());
+            timer.start();
+            labwork.labwork4_GPU();
+            labwork.saveOutputImage("labwork4-gpu-out.jpg");
+            printf("labwork 4 GPU CUDA 2D Blocks ellapsed %.1fms\n", lwNum, timer.getElapsedTimeInMilliSec());
             break;
         case 5:
             labwork.labwork5_CPU();
