@@ -220,8 +220,28 @@ __global__ void grayscale(uchar3 *input, uchar3 *output) {
     output[tid].z = output[tid].y = output[tid].x;
 }
 
+//Improve labwork 4 code to use 2D blocks
 void Labwork::labwork4_GPU() {
-   
+    //Calculate number of pixels
+    int pixelCount = inputImage->width * inputImage->height;
+
+    //Allocate CUDA memory    
+    cudaMalloc(&devInput, pixelCount * sizeof(uchar3));
+    cudaMalloc(&devGray, pixelCount * sizeof(float));
+    // Copy CUDA Memory from CPU to GPU
+    cudaMemcpy(devInput, hostInput, pixelCount * sizeof(uchar3), cudaMemcpyHostToDevice);
+
+    // Start GPU processing (KERNEL)
+    //Create 8x8 Grid
+    dim3 gridSize = dim3(8, 8);
+    //Create 32x32 Blocks
+    dim3 blockSize = dim3(32, 32);
+    rgb2grayCUDA<<<gridSize, blockSize>>>(devInput, devGray);
+    
+    // Copy CUDA Memory from GPU to CPU
+    cudaMemcpy(hostGray, devGray, pixelCount * sizeof(float), cudaMemcpyDeviceToHost);
+    // Free CUDA Memory
+    cudaFree(devInput);   
 }
 
 // CPU implementation of Gaussian Blur
