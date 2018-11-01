@@ -242,7 +242,7 @@ void Labwork::labwork3_GPU() {
     // Processing
     //======================
     // Start GPU processing (KERNEL)
-    int blockSize = 64;
+    int blockSize = 1024;
     int numBlock = pixelCount / blockSize;
     grayscale<<<numBlock, blockSize>>>(devInput, devGray);
     // Copy CUDA Memory from GPU to CPU
