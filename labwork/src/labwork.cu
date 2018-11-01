@@ -255,28 +255,47 @@ void Labwork::labwork3_GPU() {
     cudaFree(&devGray);
 }
 
-//Improve labwork 4 code to use 2D blocks
+__global__ void grayscale2D(uchar3 *input, uchar3 *output) {
+    //Calculate tid
+    int row = threadIdx.y + blockIdx.y * blockDim.y;
+    int imgWidth = (gridDim.x-1)*blockDim.x;
+    int tid = (threadIdx.x + blockIdx.x * blockDim.x) + (row * imgWidth);
+
+    //Process pixel
+    output[tid].x = (input[tid].x + input[tid].y + input[tid].z) / 3;
+    output[tid].z = output[tid].y = output[tid].x;
+}
+//Improve labwork 3 code to use 2D blocks
 void Labwork::labwork4_GPU() {
+    // Preparing var
+    //======================
     //Calculate number of pixels
     int pixelCount = inputImage->width * inputImage->height;
+    outputImage = static_cast<char *>(malloc(pixelCount * 3));
+    uchar3 *devInput;
+    uchar3 *devGray;
 
     //Allocate CUDA memory    
     cudaMalloc(&devInput, pixelCount * sizeof(uchar3));
-    cudaMalloc(&devGray, pixelCount * sizeof(float));
+    cudaMalloc(&devGray, pixelCount * sizeof(uchar3));
     // Copy CUDA Memory from CPU to GPU
-    cudaMemcpy(devInput, hostInput, pixelCount * sizeof(uchar3), cudaMemcpyHostToDevice);
+    cudaMemcpy(devInput, inputImage->buffer, pixelCount * sizeof(uchar3), cudaMemcpyHostToDevice);
 
+    // Processing
+    //======================
     // Start GPU processing (KERNEL)
-    //Create 8x8 Grid
-    dim3 gridSize = dim3(8, 8);
     //Create 32x32 Blocks
     dim3 blockSize = dim3(32, 32);
-    rgb2grayCUDA<<<gridSize, blockSize>>>(devInput, devGray);
-    
+    dim3 gridSize = dim3(inputImage->width/32+1, inputImage->height/32+1);
+    grayscale2D<<<gridSize, blockSize>>>(devInput, devGray);
     // Copy CUDA Memory from GPU to CPU
-    cudaMemcpy(hostGray, devGray, pixelCount * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(outputImage, devGray, pixelCount * sizeof(uchar3), cudaMemcpyDeviceToHost);
+
+    // Cleaning
+    //======================
     // Free CUDA Memory
-    cudaFree(devInput);   
+    cudaFree(&devInput);
+    cudaFree(&devGray);
 }
 
 // CPU implementation of Gaussian Blur
