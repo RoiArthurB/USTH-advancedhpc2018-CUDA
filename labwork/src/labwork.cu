@@ -255,11 +255,13 @@ void Labwork::labwork3_GPU() {
     cudaFree(&devGray);
 }
 
-__global__ void grayscale2D(uchar3 *input, uchar3 *output) {
+__global__ void grayscale2D(uchar3 *input, uchar3 *output, int imgWidth, int imgHeight) {
     //Calculate tid
-    int row = threadIdx.y + blockIdx.y * blockDim.y;
-    int imgWidth = (gridDim.x-1)*blockDim.x;
-    int tid = (threadIdx.x + blockIdx.x * blockDim.x) + (row * imgWidth);
+    int tidx = threadIdx.x + blockIdx.x * blockDim.x;
+    int tidy = threadIdx.y + blockIdx.y * blockDim.y;
+    if (tidx >= imgWidth || tidy >= imgHeight) return;
+
+    int tid =  tidx + (tidy * imgWidth);
 
     //Process pixel
     output[tid].x = (input[tid].x + input[tid].y + input[tid].z) / 3;
@@ -286,8 +288,9 @@ void Labwork::labwork4_GPU() {
     // Start GPU processing (KERNEL)
     //Create 32x32 Blocks
     dim3 blockSize = dim3(32, 32);
-    dim3 gridSize = dim3(inputImage->width/32+1, inputImage->height/32+1);
-    grayscale2D<<<gridSize, blockSize>>>(devInput, devGray);
+    dim3 gridSize = dim3((inputImage->width + (blockSize.x-1))/blockSize.x, 
+        (inputImage->height  + (blockSize.y-1))/blockSize.y);
+    grayscale2D<<<gridSize, blockSize>>>(devInput, devGray, inputImage->width, inputImage->height);
     // Copy CUDA Memory from GPU to CPU
     cudaMemcpy(outputImage, devGray, pixelCount * sizeof(uchar3), cudaMemcpyDeviceToHost);
 
