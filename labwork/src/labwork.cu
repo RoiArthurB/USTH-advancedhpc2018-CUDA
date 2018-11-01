@@ -218,30 +218,41 @@ void Labwork::labwork2_GPU() {
 
 }
 
-//Do labwork1 with CUDA
-void Labwork::labwork3_GPU() {
-    //Calculate number of pixels
-    int pixelCount = inputImage->width * inputImage->height;
-
-    //Allocate CUDA memory    
-    cudaMalloc(&devInput, pixelCount * sizeof(uchar3));
-    cudaMalloc(&devGray, pixelCount * sizeof(float));
-    // Copy CUDA Memory from CPU to GPU
-    cudaMemcpy(devInput, hostInput, pixelCount * sizeof(uchar3), cudaMemcpyHostToDevice);
-
-    // Start GPU processing (KERNEL)
-    int blockSize = 64;
-    int numBlock = pixelCount / blockSize;
-    rgb2grayCUDA<<<numBlock, blockSize>>>(devInput, devGray);
-    // Copy CUDA Memory from GPU to CPU
-    cudaMemcpy(hostGray, devGray, pixelCount * sizeof(float), cudaMemcpyDeviceToHost);
-    // Free CUDA Memory
-    cudaFree(devInput);
-}
 __global__ void grayscale(uchar3 *input, uchar3 *output) {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     output[tid].x = (input[tid].x + input[tid].y + input[tid].z) / 3;
     output[tid].z = output[tid].y = output[tid].x;
+}
+//Do labwork1 with CUDA
+void Labwork::labwork3_GPU() {
+    // Preparing var
+    //======================
+    //Calculate number of pixels
+    int pixelCount = inputImage->width * inputImage->height;
+    outputImage = static_cast<char *>(malloc(pixelCount * 3));
+    uchar3 *devInput;
+    uchar3 *devGray;
+
+    //Allocate CUDA memory    
+    cudaMalloc(&devInput, pixelCount * sizeof(uchar3));
+    cudaMalloc(&devGray, pixelCount * sizeof(uchar3));
+    // Copy CUDA Memory from CPU to GPU
+    cudaMemcpy(devInput, inputImage->buffer, pixelCount * sizeof(uchar3), cudaMemcpyHostToDevice);
+
+    // Processing
+    //======================
+    // Start GPU processing (KERNEL)
+    int blockSize = 64;
+    int numBlock = pixelCount / blockSize;
+    grayscale<<<numBlock, blockSize>>>(devInput, devGray);
+    // Copy CUDA Memory from GPU to CPU
+    cudaMemcpy(outputImage, devGray, pixelCount * sizeof(uchar3), cudaMemcpyDeviceToHost);
+
+    // Cleaning
+    //======================
+    // Free CUDA Memory
+    cudaFree(&devInput);
+    cudaFree(&devGray);
 }
 
 //Improve labwork 4 code to use 2D blocks
