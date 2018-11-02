@@ -88,16 +88,16 @@ int main(int argc, char **argv) {
             break;
         case 5:
             labwork.labwork5_CPU();
-            labwork.saveOutputImage("labwork5-cpu-out.jpg");
             printf("labwork 5 CPU ellapsed %.1fms\n", lwNum, timer.getElapsedTimeInMilliSec());
+            labwork.saveOutputImage("labwork5-cpu-out.jpg");
             timer.start();
             labwork.labwork5_GPU(false);
-            labwork.saveOutputImage("labwork5-gpu-out.jpg");
             printf("labwork 5 GPU non-shared memory ellapsed %.1fms\n", lwNum, timer.getElapsedTimeInMilliSec());
+            labwork.saveOutputImage("labwork5-gpu-nms-out.jpg");
             timer.start();
             labwork.labwork5_GPU(true);
-            labwork.saveOutputImage("labwork5-gpu-out.jpg");
             printf("labwork 5 GPU shared memory ellapsed %.1fms\n", lwNum, timer.getElapsedTimeInMilliSec());
+            labwork.saveOutputImage("labwork5-gpu-ms-out.jpg");
             break;
         case 6:
             labwork.labwork6_GPU();
@@ -397,21 +397,20 @@ __global__ void sharedGaussianBlur(uchar3 *input, uchar3 *output, int imgWidth, 
     int tidy = threadIdx.y + blockIdx.y * blockDim.y;
     if (tidx >= imgWidth || tidy >= imgHeight) return;
 
-    // Get thread's index number 
-    int tid =  tidx + (tidy * imgWidth);
+    // Get thread's index number inside the block
+    int tid = threadIdx.x + threadIdx.y * blockDim.x;
 
     __shared__ int sharedKernel[49]; 
 
     // Fill shared array
-    if (tid <= sizeof(sharedKernel))
+    if (tid < 49)
         sharedKernel[tid] = kernelMatrix[tid];
 
     // Wait shared array to be completed
-    __syncthreads();
+    __syncthreads();    
 
     // Core function
     //======================
-
     int sum = 0;
     int c = 0;
     for (int y = -3; y <= 3; y++) {
@@ -425,7 +424,7 @@ __global__ void sharedGaussianBlur(uchar3 *input, uchar3 *output, int imgWidth, 
             if (j < 0) continue;
             if (j >= imgHeight) continue;
             
-            int tid = imgWidth * j + i; // RowSize * j + i, get the position of our pixel
+            tid = imgWidth * j + i; // RowSize * j + i, get the position of our pixel
             
             //Applying gray filter
             unsigned char gray = (input[tid].x + input[tid].y + input[tid].z) / 3;
