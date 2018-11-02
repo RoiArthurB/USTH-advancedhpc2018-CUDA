@@ -489,10 +489,49 @@ void Labwork::labwork5_GPU(bool shared) {
     cudaFree(&devGray);
 }
 
-void Labwork::labwork6_GPU() {
+__global__ void binarize(uchar3 *input, uchar3 *output, int imgWidth, int imgHeight) {
+    //Calculate tid
+    int tidx = threadIdx.x + blockIdx.x * blockDim.x;
+    int tidy = threadIdx.y + blockIdx.y * blockDim.y;
+    if (tidx >= imgWidth || tidy >= imgHeight) return;
 
+    int tid =  tidx + (tidy * imgWidth);
+
+    //Process pixel
+    output[tid].z = output[tid].y = output[tid].x = (((int)(input[tid].x + input[tid].y + input[tid].z) / 3)/127)*255;
 }
+void Labwork::labwork6_GPU() {
+    // Preparing var
+    //======================
+    //Calculate number of pixels
+    int pixelCount = inputImage->width * inputImage->height;
+    outputImage = static_cast<char *>(malloc(pixelCount * 3));
+    uchar3 *devInput;
+    uchar3 *devGray;
 
+    //Allocate CUDA memory    
+    cudaMalloc(&devInput, pixelCount * sizeof(uchar3));
+    cudaMalloc(&devGray, pixelCount * sizeof(uchar3));
+    // Copy CUDA Memory from CPU to GPU
+    cudaMemcpy(devInput, inputImage->buffer, pixelCount * sizeof(uchar3), cudaMemcpyHostToDevice);
+
+    // Processing
+    //======================
+    // Start GPU processing (KERNEL)
+    //Create 32x32 Blocks
+    dim3 blockSize = dim3(32, 32);
+    dim3 gridSize = dim3((inputImage->width + (blockSize.x-1))/blockSize.x, 
+        (inputImage->height  + (blockSize.y-1))/blockSize.y);
+    binarize<<<gridSize, blockSize>>>(devInput, devGray, inputImage->width, inputImage->height);
+    // Copy CUDA Memory from GPU to CPU
+    cudaMemcpy(outputImage, devGray, pixelCount * sizeof(uchar3), cudaMemcpyDeviceToHost);
+
+    // Cleaning
+    //======================
+    // Free CUDA Memory
+    cudaFree(&devInput);
+    cudaFree(&devGray);
+}
 void Labwork::labwork7_GPU() {
 
 }
