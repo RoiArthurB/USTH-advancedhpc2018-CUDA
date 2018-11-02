@@ -393,18 +393,24 @@ __global__ void GaussianBlur(uchar3 *input, uchar3 *output, int imgWidth, int im
 }
 __global__ void sharedGaussianBlur(uchar3 *input, uchar3 *output, int imgWidth, int imgHeight, int *kernelMatrix){
 
-
-    __shared__ int sharedKernel[49]; 
-
-    if (threadIdx.x <= 49)
-        sharedKernel[threadIdx.x] = kernelMatrix[threadIdx.x];
-
-    __syncthreads();
-
-    //Calculate tid
     int tidx = threadIdx.x + blockIdx.x * blockDim.x;
     int tidy = threadIdx.y + blockIdx.y * blockDim.y;
     if (tidx >= imgWidth || tidy >= imgHeight) return;
+
+    // Get thread's index number 
+    int tid =  tidx + (tidy * imgWidth);
+
+    __shared__ int sharedKernel[49]; 
+
+    // Fill shared array
+    if (tid <= sizeof(sharedKernel))
+        sharedKernel[tid] = kernelMatrix[tid];
+
+    // Wait shared array to be completed
+    __syncthreads();
+
+    // Core function
+    //======================
 
     int sum = 0;
     int c = 0;
