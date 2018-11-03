@@ -490,6 +490,7 @@ void Labwork::labwork5_GPU(bool shared) {
     cudaFree(&gpuKernel);
 }
 
+//labwork6a
 __global__ void binarize(uchar3 *input, uchar3 *output, int imgWidth, int imgHeight) {
     //Calculate tid
     int tidx = threadIdx.x + blockIdx.x * blockDim.x;
@@ -501,7 +502,8 @@ __global__ void binarize(uchar3 *input, uchar3 *output, int imgWidth, int imgHei
     //Process pixel
     output[tid].z = output[tid].y = output[tid].x = (((int)(input[tid].x + input[tid].y + input[tid].z) / 3)/127)*255;
 }
-__global__ void increaseBrightness(uchar3 *input, uchar3 *output, int imgWidth, int imgHeight, int value) {
+//labwork6b
+__global__ void brightnessControll(uchar3 *input, uchar3 *output, int imgWidth, int imgHeight, int value) {
     //Calculate tid
     int tidx = threadIdx.x + blockIdx.x * blockDim.x;
     int tidy = threadIdx.y + blockIdx.y * blockDim.y;
@@ -510,21 +512,9 @@ __global__ void increaseBrightness(uchar3 *input, uchar3 *output, int imgWidth, 
     int tid =  tidx + (tidy * imgWidth);
 
     //Process pixel
-    unsigned char r, g, b;
-    r = input[tid].x + value;
-    g = input[tid].y + value;
-    b = input[tid].z + value;
-
-    if (r > 255)
-        r = 255;            
-    if (g > 255)
-        g = 255;    
-    if (b > 255)
-        b = 255;    
-
-    output[tid].x = r;
-    output[tid].y = g;
-    output[tid].z = b;
+    output[tid].x = min(255, max(0, input[tid].x + value));
+    output[tid].y = min(255, max(0, input[tid].y + value));
+    output[tid].z = min(255, max(0, input[tid].z + value));  
 }
 __global__ void decreaseBrightness(uchar3 *input, uchar3 *output, int imgWidth, int imgHeight, int value) {
     //Calculate tid
