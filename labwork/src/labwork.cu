@@ -100,7 +100,7 @@ int main(int argc, char **argv) {
             labwork.saveOutputImage("labwork5-gpu-ms-out.jpg");
             break;
         case 6:
-            if (lwNum != 3 ) {
+            if ( argv[3] ) {
                 labwork.loadInputSecondImage( std::string(argv[3]) );
             }
             labwork.labwork6_GPU();
@@ -128,6 +128,7 @@ int main(int argc, char **argv) {
 
 void Labwork::loadInputImage(std::string inputFileName) {
     inputImage = jpegLoader.load(inputFileName);
+    inputSecondImage = inputImage;
 }
 
 void Labwork::loadInputSecondImage(std::string inputFileName) {
@@ -564,9 +565,10 @@ void Labwork::labwork6_GPU() {
     //binarize<<<gridSize, blockSize>>>(devInput, devImgProcessed, inputImage->width, inputImage->height);
     
     //labwork6b
-    //brightnessControll<<<gridSize, blockSize>>>(devInput, devImgProcessed, inputImage->width, inputImage->height, 50);
+    brightnessControll<<<gridSize, blockSize>>>(devInput, devImgProcessed, inputImage->width, inputImage->height, 50);
     
     //labwork6c
+    /*
     uchar3 *secondImg;
 
     cudaMalloc(&secondImg, pixelCount * sizeof(uchar3));
@@ -577,12 +579,14 @@ void Labwork::labwork6_GPU() {
     // Copy CUDA Memory from GPU to CPU
     cudaMemcpy(outputImage, devImgProcessed, pixelCount * sizeof(uchar3), cudaMemcpyDeviceToHost);
 
+    cudaFree(&secondImg);
+    */
+
     // Cleaning
     //======================
     // Free CUDA Memory
     cudaFree(&devInput);
     cudaFree(&devImgProcessed);
-    cudaFree(&secondImg);
 }
 void Labwork::labwork7_GPU() {
 
