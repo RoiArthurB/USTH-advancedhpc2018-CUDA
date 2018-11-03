@@ -487,6 +487,7 @@ void Labwork::labwork5_GPU(bool shared) {
     // Free CUDA Memory
     cudaFree(&devInput);
     cudaFree(&devGray);
+    cudaFree(&gpuKernel);
 }
 
 __global__ void binarize(uchar3 *input, uchar3 *output, int imgWidth, int imgHeight) {
