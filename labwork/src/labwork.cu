@@ -500,6 +500,56 @@ __global__ void binarize(uchar3 *input, uchar3 *output, int imgWidth, int imgHei
     //Process pixel
     output[tid].z = output[tid].y = output[tid].x = (((int)(input[tid].x + input[tid].y + input[tid].z) / 3)/127)*255;
 }
+__global__ void increaseBrightness(uchar3 *input, uchar3 *output, int imgWidth, int imgHeight, int value) {
+    //Calculate tid
+    int tidx = threadIdx.x + blockIdx.x * blockDim.x;
+    int tidy = threadIdx.y + blockIdx.y * blockDim.y;
+    if (tidx >= imgWidth || tidy >= imgHeight) return;
+
+    int tid =  tidx + (tidy * imgWidth);
+
+    //Process pixel
+    unsigned char r, g, b;
+    r = input[tid].x + value;
+    g = input[tid].y + value;
+    b = input[tid].z + value;
+
+    if (r > 255)
+        r = 255;            
+    if (g > 255)
+        g = 255;    
+    if (b > 255)
+        b = 255;    
+
+    output[tid].x = r;
+    output[tid].y = g;
+    output[tid].z = b;
+}
+__global__ void decreaseBrightness(uchar3 *input, uchar3 *output, int imgWidth, int imgHeight, int value) {
+    //Calculate tid
+    int tidx = threadIdx.x + blockIdx.x * blockDim.x;
+    int tidy = threadIdx.y + blockIdx.y * blockDim.y;
+    if (tidx >= imgWidth || tidy >= imgHeight) return;
+
+    int tid =  tidx + (tidy * imgWidth);
+
+    //Process pixel
+    unsigned char r, g, b;
+    r = input[tid].x - value;
+    g = input[tid].y - value;
+    b = input[tid].z - value;
+
+    if (r < 0)
+        r = 0;            
+    if (g < 0)
+        g = 0;    
+    if (b < 0)
+        b = 0;    
+
+    output[tid].x = r;
+    output[tid].y = g;
+    output[tid].z = b;
+}
 void Labwork::labwork6_GPU() {
     // Preparing var
     //======================
@@ -522,7 +572,9 @@ void Labwork::labwork6_GPU() {
     dim3 blockSize = dim3(32, 32);
     dim3 gridSize = dim3((inputImage->width + (blockSize.x-1))/blockSize.x, 
         (inputImage->height  + (blockSize.y-1))/blockSize.y);
-    binarize<<<gridSize, blockSize>>>(devInput, devGray, inputImage->width, inputImage->height);
+    //binarize<<<gridSize, blockSize>>>(devInput, devGray, inputImage->width, inputImage->height);
+    //increaseBrightness<<<gridSize, blockSize>>>(devInput, devGray, inputImage->width, inputImage->height, 10);
+    decreaseBrightness<<<gridSize, blockSize>>>(devInput, devGray, inputImage->width, inputImage->height, 10);
     // Copy CUDA Memory from GPU to CPU
     cudaMemcpy(outputImage, devGray, pixelCount * sizeof(uchar3), cudaMemcpyDeviceToHost);
 
