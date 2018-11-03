@@ -8,10 +8,12 @@ class Labwork {
 private:
     JpegLoader jpegLoader;
     JpegInfo *inputImage;
+    JpegInfo *inputSecondImage;
     char *outputImage;
 
 public:
     void loadInputImage(std::string inputFileName);
+    void loadInputSecondImage(std::string inputFileName);
     void saveOutputImage(std::string outputFileName);
 
     void labwork1_CPU();
