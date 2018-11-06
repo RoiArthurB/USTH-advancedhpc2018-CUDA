@@ -189,49 +189,149 @@ void Labwork::labwork6_GPU() {
 
 }
 
-__global__ void grayscale2D(uchar3 *input, uchar3 *output, int imgWidth, int imgHeight) {
+__global__ void grayscale2D(uchar3 *input, uchar3 *output, int *histo, int imgWidth, int imgHeight) {
     //Calculate tid
-    int tidx = threadIdx.x + blockIdx.x * blockDim.x;
-    int tidy = threadIdx.y + blockIdx.y * blockDim.y;
+    unsigned int tidx = threadIdx.x + blockIdx.x * blockDim.x;
+    unsigned int tidy = threadIdx.y + blockIdx.y * blockDim.y;
     if (tidx >= imgWidth || tidy >= imgHeight) return;
 
-    int tid =  tidx + (tidy * imgWidth);
+    int localtid =  tidx + (tidy * imgWidth);
 
     //Process pixel
-    output[tid].x = (input[tid].x + input[tid].y + input[tid].z) / 3;
-    output[tid].z = output[tid].y = output[tid].x;
+    unsigned int g = ((int)input[localtid].x + (int)input[localtid].y + (int)input[localtid].z) / 3;
+    output[localtid].z = output[localtid].y = output[localtid].x = (char)g;
+    histo[localtid] = g;
+}
+__global__ void reduceMax(int *in, int *out) {
+    // dynamic shared memory size, allocated in host
+    extern __shared__ int cache[];
+    // cache the block content
+    unsigned int localtid = threadIdx.x;
+    unsigned int tid = threadIdx.x+blockIdx.x*2*blockDim.x;
+    cache[localtid] = max(in[tid], in[tid + blockDim.x]);
+
+    __syncthreads();
+
+    // reduction in cache
+    for (int s = blockDim.x / 2; s > 0; s /= 2) {
+        if (localtid < s && cache[localtid + s] < 256) { // Debug pointer
+            cache[localtid] = max(cache[localtid], cache[localtid + s]);
+        }
+        __syncthreads();
+    }
+
+    // only first thread writes back
+    if (localtid == 0) {
+        out[blockIdx.x] = cache[0];
+    }
 }
 void Labwork::labwork7_GPU() {
-    // Preparing var
+    // GRAYSCALING
     //======================
+    
+    // Preparing var
+    //----------------------
     //Calculate number of pixels
     int pixelCount = inputImage->width * inputImage->height;
     outputImage = static_cast<char *>(malloc(pixelCount * 3));
     uchar3 *devInput;
     uchar3 *devGray;
+    int *devHisto;
 
     //Allocate CUDA memory    
     cudaMalloc(&devInput, pixelCount * sizeof(uchar3));
     cudaMalloc(&devGray, pixelCount * sizeof(uchar3));
+    cudaMalloc(&devHisto, pixelCount * sizeof(int));
     // Copy CUDA Memory from CPU to GPU
     cudaMemcpy(devInput, inputImage->buffer, pixelCount * sizeof(uchar3), cudaMemcpyHostToDevice);
 
     // Processing
-    //======================
+    //----------------------
     // Start GPU processing (KERNEL)
     //Create 32x32 Blocks
     dim3 blockSize = dim3(32, 32);
     dim3 gridSize = dim3((inputImage->width + (blockSize.x-1))/blockSize.x, 
         (inputImage->height  + (blockSize.y-1))/blockSize.y);
-    grayscale2D<<<gridSize, blockSize>>>(devInput, devGray, inputImage->width, inputImage->height);
+    grayscale2D<<<gridSize, blockSize>>>(devInput, devGray, devHisto, inputImage->width, inputImage->height);
     // Copy CUDA Memory from GPU to CPU
     cudaMemcpy(outputImage, devGray, pixelCount * sizeof(uchar3), cudaMemcpyDeviceToHost);
 
     // Cleaning
-    //======================
+    //----------------------
     // Free CUDA Memory
     cudaFree(&devInput);
     cudaFree(&devGray);
+
+    //======================
+    // !GRAYSCALING
+
+    // REDUCE
+    //======================
+
+    // Prep
+    //----------------------
+    int dimBlockR = 1024;
+    int dimGridR = ceil(pixelCount / dimBlockR);
+
+    int *devMax;
+
+
+
+    int *temp = static_cast<int *>(malloc(pixelCount * sizeof(int)));    
+    cudaMemcpy(temp, devHisto, pixelCount * sizeof(int), cudaMemcpyDeviceToHost);
+    int test1 = -100;
+    int test2 = 100;
+    for (int i = 0; i < pixelCount; i++){
+        //  printf("\t[%d / %d] %d - %d\n", i, dimBlockR, temp[i], &temp[i]);
+        test1 = max(test1, temp[i]);
+        test2 = min(test2, temp[i]);
+        
+        //if (outputImage[i]+128 > 160) printf("SAUCISSE %d\n", temp[i]);
+    }
+    printf("testMax %d\n", test1);
+    printf("testMin %d\n", test2);
+
+    //Allocate CUDA memory    
+    cudaMalloc(&devMax, pixelCount * sizeof(int));
+    // Processing
+    //----------------------    
+    // Get max value
+    while(dimBlockR < (dimBlockR*dimGridR)/2){
+        reduceMax<<<dimGridR, dimBlockR, dimBlockR * sizeof(int)>>>(devHisto, devMax);
+        dimGridR /= 2;
+
+        int *temp = static_cast<int *>(malloc(dimGridR * sizeof(int)));
+        
+        cudaMemcpy(temp, devMax, dimGridR * sizeof(int), cudaMemcpyDeviceToHost);
+        
+        cudaFree(&devHisto);
+        cudaMalloc(&devHisto, dimGridR * sizeof(int));
+        
+        cudaFree(&devMax);
+        cudaMalloc(&devMax, dimGridR * sizeof(int));
+        
+        cudaMemcpy(devHisto, temp, dimGridR * sizeof(int), cudaMemcpyHostToDevice);
+    }
+    
+    // Copy final max reduce to host var
+    int *hostMax = static_cast<int *>(malloc(dimGridR*sizeof(int))); 
+    cudaMemcpy(hostMax, devHisto, dimGridR*sizeof(int), cudaMemcpyDeviceToHost);
+
+    //printf("%d\n", &outputImage);
+    //    printf("%d\n", *devMax.size());
+    for (int i = 0; i < dimGridR; i++){
+        printf("FINAL :\t[%d / %d] %d\n", i, dimGridR, hostMax[i]);
+    }
+
+    // Cleaning
+    //----------------------
+    // Free CUDA Memory
+    cudaFree(&devMax);
+    cudaFree(&devHisto);
+
+    //======================
+    // !REDUCE
+    
 }
 
 void Labwork::labwork8_GPU() {
