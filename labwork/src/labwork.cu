@@ -273,9 +273,8 @@ void Labwork::labwork7_GPU() {
     int dimBlockR = 1024;
     int dimGridR = ceil(pixelCount / dimBlockR);
 
-    int *devMax;
-
-
+    int *devReduce;
+    cudaMalloc(&devReduce, pixelCount * sizeof(int));
 
     int *temp = static_cast<int *>(malloc(pixelCount * sizeof(int)));    
     cudaMemcpy(temp, devHisto, pixelCount * sizeof(int), cudaMemcpyDeviceToHost);
@@ -291,47 +290,52 @@ void Labwork::labwork7_GPU() {
     printf("testMax %d\n", test1);
     printf("testMin %d\n", test2);
 
-    //Allocate CUDA memory    
-    cudaMalloc(&devMax, pixelCount * sizeof(int));
     // Processing
     //----------------------    
+    
     // Get max value
-    while(dimBlockR < (dimBlockR*dimGridR)/2){
-        reduceMax<<<dimGridR, dimBlockR, dimBlockR * sizeof(int)>>>(devHisto, devMax);
+    while(dimBlockR < (dimBlockR*dimGridR)/2){ // Loop until all thread inside 1 block
+        // Call reduceMax kernel
+        reduceMax<<<dimGridR, dimBlockR, dimBlockR * sizeof(int)>>>(devHisto, devReduce);
+        // Divide grid size because of the reduce kernel
         dimGridR /= 2;
 
-        int *temp = static_cast<int *>(malloc(dimGridR * sizeof(int)));
-        
-        cudaMemcpy(temp, devMax, dimGridR * sizeof(int), cudaMemcpyDeviceToHost);
-        
+        // Swap input/output for kernel
+        //------
+        int *swapInputOutput = static_cast<int *>(malloc(dimGridR * sizeof(int)));
+        // save output in temp var
+        cudaMemcpy(swapInputOutput, devReduce, dimGridR * sizeof(int), cudaMemcpyDeviceToHost);
+        //Clean output & recreate to the exact needed size
+        cudaFree(&devReduce);
+        cudaMalloc(&devReduce, dimGridR * sizeof(int));
+        //Clean output & recreate to the exact needed size
         cudaFree(&devHisto);
         cudaMalloc(&devHisto, dimGridR * sizeof(int));
-        
-        cudaFree(&devMax);
-        cudaMalloc(&devMax, dimGridR * sizeof(int));
-        
-        cudaMemcpy(devHisto, temp, dimGridR * sizeof(int), cudaMemcpyHostToDevice);
+        // Update input var        
+        cudaMemcpy(devHisto, swapInputOutput, dimGridR * sizeof(int), cudaMemcpyHostToDevice);
+        // Clean temp var
+        free(swapInputOutput);
     }
     
     // Copy final max reduce to host var
     int *hostMax = static_cast<int *>(malloc(dimGridR*sizeof(int))); 
     cudaMemcpy(hostMax, devHisto, dimGridR*sizeof(int), cudaMemcpyDeviceToHost);
-
     //printf("%d\n", &outputImage);
-    //    printf("%d\n", *devMax.size());
-    for (int i = 0; i < dimGridR; i++){
-        printf("FINAL :\t[%d / %d] %d\n", i, dimGridR, hostMax[i]);
-    }
+    //    printf("%d\n", *devReduce.size());
+    //for (int i = 0; i < dimGridR; i++){
+    //    printf("FINAL MAX :\t[%d / %d] %d\n", i, dimGridR, hostMax[i]);
+    //}
 
     // Cleaning
     //----------------------
     // Free CUDA Memory
-    cudaFree(&devMax);
+    cudaFree(&devReduce);
     cudaFree(&devHisto);
 
     //======================
     // !REDUCE
     
+    free(hostMax);
 }
 
 void Labwork::labwork8_GPU() {
