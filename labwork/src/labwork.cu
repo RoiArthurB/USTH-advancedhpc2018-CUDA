@@ -189,7 +189,7 @@ void Labwork::labwork6_GPU() {
 
 }
 
-__global__ void grayscale2D(uchar3 *input, uchar3 *output, int *histo, int imgWidth, int imgHeight) {
+__global__ void grayscale2D(uchar3 *input, int *histo, int imgWidth, int imgHeight) {
     //Calculate tid
     unsigned int tidx = threadIdx.x + blockIdx.x * blockDim.x;
     unsigned int tidy = threadIdx.y + blockIdx.y * blockDim.y;
@@ -199,8 +199,23 @@ __global__ void grayscale2D(uchar3 *input, uchar3 *output, int *histo, int imgWi
 
     //Process pixel
     unsigned int g = ((int)input[localtid].x + (int)input[localtid].y + (int)input[localtid].z) / 3;
-    output[localtid].z = output[localtid].y = output[localtid].x = (char)g;
     histo[localtid] = g;
+}
+__global__ void stretching(int *input, uchar3 *output, int imgWidth, int imgHeight, int min, int max) {
+    //Calculate tid
+    unsigned int tidx = threadIdx.x + blockIdx.x * blockDim.x;
+    unsigned int tidy = threadIdx.y + blockIdx.y * blockDim.y;
+    if (tidx >= imgWidth || tidy >= imgHeight) return;
+
+    int localtid =  tidx + (tidy * imgWidth);
+    
+
+    //Process pixel
+    float num = (input[localtid] - min);
+    float gStretch = ((num / (max - min)) * 255);
+    
+    //Store to output image
+    output[localtid].z = output[localtid].y = output[localtid].x = (char)gStretch;
 }
 void Labwork::labwork7_GPU() {
     // GRAYSCALING
@@ -210,34 +225,29 @@ void Labwork::labwork7_GPU() {
     //----------------------
     //Calculate number of pixels
     int pixelCount = inputImage->width * inputImage->height;
-    outputImage = static_cast<char *>(malloc(pixelCount * 3));
+//    outputImage = static_cast<char *>(malloc(pixelCount * 3));
     uchar3 *devInput;
-    uchar3 *devGray;
     int *devHisto;
 
     //Allocate CUDA memory    
     cudaMalloc(&devInput, pixelCount * sizeof(uchar3));
-    cudaMalloc(&devGray, pixelCount * sizeof(uchar3));
     cudaMalloc(&devHisto, pixelCount * sizeof(int));
     // Copy CUDA Memory from CPU to GPU
     cudaMemcpy(devInput, inputImage->buffer, pixelCount * sizeof(uchar3), cudaMemcpyHostToDevice);
-
-    // Processing
-    //----------------------
-    // Start GPU processing (KERNEL)
+    
     //Create 32x32 Blocks
     dim3 blockSize = dim3(32, 32);
     dim3 gridSize = dim3((inputImage->width + (blockSize.x-1))/blockSize.x, 
         (inputImage->height  + (blockSize.y-1))/blockSize.y);
-    grayscale2D<<<gridSize, blockSize>>>(devInput, devGray, devHisto, inputImage->width, inputImage->height);
-    // Copy CUDA Memory from GPU to CPU
-    cudaMemcpy(outputImage, devGray, pixelCount * sizeof(uchar3), cudaMemcpyDeviceToHost);
+
+    // Processing
+    //----------------------
+    // Start GPU processing (KERNEL)
+    grayscale2D<<<gridSize, blockSize>>>(devInput, devHisto, inputImage->width, inputImage->height);
 
     // Cleaning
     //----------------------
-    // Free CUDA Memory
     cudaFree(&devInput);
-    cudaFree(&devGray);
 
     //======================
     // !GRAYSCALING
@@ -273,14 +283,28 @@ void Labwork::labwork7_GPU() {
 
     // STRETCHING
     //======================
-    // Cleaning
+    // Prep
     //----------------------
+    //Calculate number of pixels
+    outputImage = static_cast<char *>(malloc(pixelCount * 3));
+    uchar3 *devGray;
+
+    //Allocate CUDA memory    
+    cudaMalloc(&devGray, pixelCount * sizeof(uchar3));
+
     // Processing
     //----------------------
+    // Start GPU processing (KERNEL)
+    stretching<<<gridSize, blockSize>>>(devHisto, devGray, inputImage->width, inputImage->height, hostMin, hostMax);
+    
+    // Copy CUDA Memory from GPU to CPU
+    cudaMemcpy(outputImage, devGray, pixelCount * sizeof(uchar3), cudaMemcpyDeviceToHost);
+    //stretching(int *input, uchar3 *output, int imgWidth, int imgHeight, int min, int max)
     // Cleaning
     //----------------------
     // Free CUDA Memory
     cudaFree(&devHisto);
+    cudaFree(&devGray);
     //======================
     // !STRETCHING
 }
