@@ -202,29 +202,6 @@ __global__ void grayscale2D(uchar3 *input, uchar3 *output, int *histo, int imgWi
     output[localtid].z = output[localtid].y = output[localtid].x = (char)g;
     histo[localtid] = g;
 }
-__global__ void reduceMax(int *in, int *out) {
-    // dynamic shared memory size, allocated in host
-    extern __shared__ int cache[];
-    // cache the block content
-    unsigned int localtid = threadIdx.x;
-    unsigned int tid = threadIdx.x+blockIdx.x*2*blockDim.x;
-    cache[localtid] = max(in[tid], in[tid + blockDim.x]);
-
-    __syncthreads();
-
-    // reduction in cache
-    for (int s = blockDim.x / 2; s > 0; s /= 2) {
-        if (localtid < s && cache[localtid + s] < 256) { // Debug pointer
-            cache[localtid] = max(cache[localtid], cache[localtid + s]);
-        }
-        __syncthreads();
-    }
-
-    // only first thread writes back
-    if (localtid == 0) {
-        out[blockIdx.x] = cache[0];
-    }
-}
 void Labwork::labwork7_GPU() {
     // GRAYSCALING
     //======================
@@ -270,72 +247,42 @@ void Labwork::labwork7_GPU() {
 
     // Prep
     //----------------------
-    int dimBlockR = 1024;
-    int dimGridR = ceil(pixelCount / dimBlockR);
-
-    int *devReduce;
-    cudaMalloc(&devReduce, pixelCount * sizeof(int));
-
     int *temp = static_cast<int *>(malloc(pixelCount * sizeof(int)));    
     cudaMemcpy(temp, devHisto, pixelCount * sizeof(int), cudaMemcpyDeviceToHost);
-    int test1 = -100;
-    int test2 = 100;
-    for (int i = 0; i < pixelCount; i++){
-        //  printf("\t[%d / %d] %d - %d\n", i, dimBlockR, temp[i], &temp[i]);
-        test1 = max(test1, temp[i]);
-        test2 = min(test2, temp[i]);
-        
-        //if (outputImage[i]+128 > 160) printf("SAUCISSE %d\n", temp[i]);
-    }
-    printf("testMax %d\n", test1);
-    printf("testMin %d\n", test2);
+    int hostMax = 0;
+    int hostMin = 255;
 
     // Processing
     //----------------------    
-    
-    // Get max value
-    while(dimBlockR < (dimBlockR*dimGridR)/2){ // Loop until all thread inside 1 block
-        // Call reduceMax kernel
-        reduceMax<<<dimGridR, dimBlockR, dimBlockR * sizeof(int)>>>(devHisto, devReduce);
-        // Divide grid size because of the reduce kernel
-        dimGridR /= 2;
-
-        // Swap input/output for kernel
-        //------
-        int *swapInputOutput = static_cast<int *>(malloc(dimGridR * sizeof(int)));
-        // save output in temp var
-        cudaMemcpy(swapInputOutput, devReduce, dimGridR * sizeof(int), cudaMemcpyDeviceToHost);
-        //Clean output & recreate to the exact needed size
-        cudaFree(&devReduce);
-        cudaMalloc(&devReduce, dimGridR * sizeof(int));
-        //Clean output & recreate to the exact needed size
-        cudaFree(&devHisto);
-        cudaMalloc(&devHisto, dimGridR * sizeof(int));
-        // Update input var        
-        cudaMemcpy(devHisto, swapInputOutput, dimGridR * sizeof(int), cudaMemcpyHostToDevice);
-        // Clean temp var
-        free(swapInputOutput);
+    for (int i = 0; i < pixelCount; i++){
+        hostMax = max(hostMax, temp[i]);
+        hostMin = min(hostMin, temp[i]);
     }
-    
-    // Copy final max reduce to host var
-    int *hostMax = static_cast<int *>(malloc(dimGridR*sizeof(int))); 
-    cudaMemcpy(hostMax, devHisto, dimGridR*sizeof(int), cudaMemcpyDeviceToHost);
-    //printf("%d\n", &outputImage);
-    //    printf("%d\n", *devReduce.size());
-    //for (int i = 0; i < dimGridR; i++){
-    //    printf("FINAL MAX :\t[%d / %d] %d\n", i, dimGridR, hostMax[i]);
-    //}
+
+    printf("testMax %d\n", hostMax);
+    printf("testMin %d\n", hostMin);
 
     // Cleaning
     //----------------------
-    // Free CUDA Memory
-    cudaFree(&devReduce);
-    cudaFree(&devHisto);
+    // Free CPU Memory
+    free(temp);
 
     //======================
     // !REDUCE
-    
-    free(hostMax);
+
+
+    // STRETCHING
+    //======================
+    // Cleaning
+    //----------------------
+    // Processing
+    //----------------------
+    // Cleaning
+    //----------------------
+    // Free CUDA Memory
+    cudaFree(&devHisto);
+    //======================
+    // !STRETCHING
 }
 
 void Labwork::labwork8_GPU() {
