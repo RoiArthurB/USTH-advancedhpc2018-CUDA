@@ -269,9 +269,6 @@ void Labwork::labwork7_GPU() {
         hostMin = min(hostMin, temp[i]);
     }
 
-    printf("testMax %d\n", hostMax);
-    printf("testMin %d\n", hostMin);
-
     // Cleaning
     //----------------------
     // Free CPU Memory
@@ -299,7 +296,7 @@ void Labwork::labwork7_GPU() {
     
     // Copy CUDA Memory from GPU to CPU
     cudaMemcpy(outputImage, devGray, pixelCount * sizeof(uchar3), cudaMemcpyDeviceToHost);
-    //stretching(int *input, uchar3 *output, int imgWidth, int imgHeight, int min, int max)
+    
     // Cleaning
     //----------------------
     // Free CUDA Memory
@@ -309,8 +306,182 @@ void Labwork::labwork7_GPU() {
     // !STRETCHING
 }
 
+typedef struct hsv {
+    double *h, *s, *v;
+} Hsv ;
+__global__ void RGB2HSV(uchar3 *in, Hsv out, int imgWidth, int imgHeight) {
+    //Calculate tid
+    unsigned int tidx = threadIdx.x + blockIdx.x * blockDim.x;
+    unsigned int tidy = threadIdx.y + blockIdx.y * blockDim.y;
+    if (tidx >= imgWidth || tidy >= imgHeight) return;
+    
+    int tid =  tidx + (tidy * imgWidth);
+    double s, v, h = 0;
+    
+    // Scaling from [0 .. 255] to [0 .. 1]
+    // Local var for optimization
+    double pixelR = (double)in[tid].x / 255.0;
+    double pixelG = (double)in[tid].y / 255.0;
+    double pixelB = (double)in[tid].z / 255.0;
+    
+    double pxMax = max(pixelR, max(pixelG, pixelB));
+    //int pxMin = // No need of this variable => Only 1 use 
+    
+    // V
+    //======================
+
+    v = pxMax;
+    
+    //======================
+    // ! V
+
+    // S
+    //======================
+    double delta = pxMax - min(pixelR, min(pixelG, pixelB));
+
+    if( pxMax <= 0.0 ) { // NOTE: if Max is == 0, this divide would cause a crash
+        // if max is 0, then r = g = b = 0              
+        // s = 0, h is undefined
+        s = 0.0;
+    } else {
+        s = (delta / pxMax);
+    }
+    //======================
+    // ! S
+
+    // H
+    //======================
+    if( pixelR >= pxMax ){ // between yellow & magenta
+        h = ( pixelG - pixelB ) / delta;
+        int decimal = static_cast<int>(h*10)%10;
+        h = ((int)h % 6) + decimal * 0.1;
+    }else{
+        if( pixelG >= pxMax )
+            h = 2.0 + ( ( pixelB - pixelR ) / delta );  // between cyan & yellow
+        else
+            h = 4.0 + ( ( pixelR - pixelG ) / delta );  // between magenta & cyan
+    }
+    
+    // degrees
+    h *= 60.0;
+    //======================
+    // ! H
+
+    // Save new val in SoA
+    out.h[tid] = h;
+    out.s[tid] = s;
+    out.v[tid] = v;
+}
+__global__ void HSV2RGB(Hsv in, uchar3 *out, int imgWidth, int imgHeight) {
+    //Calculate tid
+    unsigned int tidx = threadIdx.x + blockIdx.x * blockDim.x;
+    unsigned int tidy = threadIdx.y + blockIdx.y * blockDim.y;
+    if (tidx >= imgWidth || tidy >= imgHeight) return;
+    
+    int tid =  tidx + (tidy * imgWidth);
+    
+    // Prepare local value for optimization
+    double pixelH = in.h[tid];
+    double pixelS = in.s[tid];
+    double pixelV = in.v[tid];
+    
+    double d = pixelH / 60.0;
+    // No need hi => Only 1 use
+    double f = d - ((int)d % 6);
+    
+    double l = pixelV * (1.0 - pixelS);
+    double m = pixelV * (1.0 - f * pixelS);
+    double n = pixelV * (1.0 - (1.0 - f) * pixelS);
+    
+    // Calculate RGB values
+    double r, g, b;
+    switch ((int)pixelH / 60){
+        case 0:
+            r = pixelV;
+            g = n;
+            b = l;
+            break;
+        case 1:
+            r = m;
+            g = pixelV;
+            b = l;
+            break;
+        case 2:
+            r = l;
+            g = pixelV;
+            b = n;
+            break;
+        case 3:
+            r = l;
+            g = m;
+            b = pixelV;
+            break;
+        case 4:
+            r = n;
+            g = l;
+            b = pixelV;
+            break;
+        case 5:
+        default:
+            r = pixelV;
+            g = l;
+            b = m;
+            break;
+    }
+    
+    //Note : out[].x = R | out[].y = G | out[].z = B
+    // [0..1] to [0..255]
+    out[tid].x = (char)(r * 255);
+    out[tid].y = (char)(g * 255);
+    out[tid].z = (char)(b * 255);
+}
 void Labwork::labwork8_GPU() {
 
+    // GRAYSCALING
+    //======================
+    
+    // Preparing var
+    //----------------------
+    //Calculate number of pixels
+    int pixelCount = inputImage->width * inputImage->height;
+    //Kernel param
+    dim3 blockSize = dim3(32, 32);
+    dim3 gridSize = dim3((inputImage->width + (blockSize.x-1))/blockSize.x, 
+        (inputImage->height  + (blockSize.y-1))/blockSize.y);
+    
+    //Kernel var
+    outputImage = static_cast<char *>(malloc(pixelCount * 3));
+    Hsv hsvArray;
+    
+    // Malloc arrays inside the structure
+    cudaMalloc((void**)&hsvArray.h, pixelCount * sizeof(double));
+    cudaMalloc((void**)&hsvArray.s, pixelCount * sizeof(double));
+    cudaMalloc((void**)&hsvArray.v, pixelCount * sizeof(double));
+    
+    uchar3 *devInput; 
+    cudaMalloc(&devInput, pixelCount * sizeof(uchar3));
+    cudaMemcpy(devInput, inputImage->buffer, pixelCount * sizeof(uchar3), cudaMemcpyHostToDevice);
+
+    // Processing
+    //----------------------
+    // Start GPU processing (KERNEL)
+    RGB2HSV<<<gridSize, blockSize>>>(devInput, hsvArray, inputImage->width, inputImage->height);
+    // No need to clean devInput
+    HSV2RGB<<<gridSize, blockSize>>>(hsvArray, devInput, inputImage->width, inputImage->height);
+    
+    // Get final image
+    cudaMemcpy(outputImage, devInput, pixelCount * sizeof(uchar3), cudaMemcpyDeviceToHost);
+
+    // Cleaning
+    //----------------------
+    cudaFree(devInput);
+    cudaFree(hsvArray.h);
+    cudaFree(hsvArray.s);
+    cudaFree(hsvArray.v);
+
+    //======================
+    // !GRAYSCALING
+    
 }
 
 void Labwork::labwork9_GPU() {
