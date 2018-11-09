@@ -1,0 +1,124 @@
+% !TEX TS-program = pdflatex
+% !TEX encoding = UTF-8 Unicode
+
+\documentclass[11pt]{article} % use larger type; default would be 10pt
+
+\usepackage[utf8]{inputenc} % set input encoding (not needed with XeLaTeX)
+
+%%% PAGE DIMENSIONS
+\usepackage{geometry}
+\geometry{a4paper}
+
+\usepackage{graphicx} % support the \includegraphics command and options
+
+% \usepackage[parfill]{parskip} % Activate to begin paragraphs with an empty line rather than an indent
+
+%%% PACKAGES
+\usepackage{booktabs} % for much better looking tables
+\usepackage{array} 	  % for better arrays (eg matrices) in maths
+\usepackage{paralist} % very flexible & customisable lists (eg. enumerate/itemize, etc.)
+\usepackage{verbatim} % adds environment for commenting out blocks of text & for better verbatim
+\usepackage{subfig}   % make it possible to include more than one captioned figure/table in a single float
+\usepackage{listings} % for code presentation
+% These packages are all incorporated in the memoir class to one degree or another...
+
+%%% HEADERS & FOOTERS
+\usepackage{fancyhdr} % This should be set AFTER setting up the page geometry
+\pagestyle{fancy} % options: empty , plain , fancy
+\renewcommand{\headrulewidth}{0pt} % customise the layout...
+\lhead{}\chead{}\rhead{} % Setup Header
+\lfoot{}\cfoot{\thepage}\rfoot{} % Setup Footer
+
+%%% SECTION TITLE APPEARANCE
+\usepackage{sectsty}
+\allsectionsfont{\sffamily\mdseries\upshape} % (See the fntguide.pdf for font help)
+% (This matches ConTeXt defaults)
+
+%%% ToC (table of contents) APPEARANCE
+%\usepackage[nottoc,notlof,notlot]{tocbibind} % Put the bibliography in the ToC
+%\usepackage[titles,subfigure]{tocloft} % Alter the style of the Table of Contents
+%\renewcommand{\cftsecfont}{\rmfamily\mdseries\upshape}
+%\renewcommand{\cftsecpagefont}{\rmfamily\mdseries\upshape} % No bold!
+
+%%% END Article customizations
+
+%%% The "real" document content comes below...
+
+\title{Report 4}
+\author{Arthur BRUGIERE}
+%\date{} % Activate to display a given date or no date (if empty),
+         % otherwise the current date is printed 
+
+\begin{document}
+\maketitle
+
+\section{Explain how you improve the labwork}
+
+Implementing a 2D block changed a few elements.
+
+\subsection{Into the CPU function}
+
+First of all, we have to create the 2D block. We will create one of 32 threads on both dimension (32*32 = 1024 threads, as we used in the previous implementation).
+
+\lstset{language=C}
+\begin{lstlisting}
+dim3 blockSize = dim3(32, 32);
+\end{lstlisting}
+
+After than, we have to calculate the size of our grid. The calcul is a little more complicated because we take care to have enough blocks for processing all the image (even if all threads won't be used in the last block). 
+
+\lstset{language=C}
+\begin{lstlisting}
+dim3 gridSize = dim3((inputImage->width + (blockSize.x-1))/blockSize.x, 
+    (inputImage->height  + (blockSize.y-1))/blockSize.y);
+\end{lstlisting}
+
+And, finally, we call our kernel as previously.
+
+\lstset{language=C}
+\begin{lstlisting}
+grayscale2D<<<gridSize, blockSize>>>(devInput, devGray, inputImage->width, inputImage->height);
+\end{lstlisting}
+
+\subsection{Into the GPU function (kernel)}
+
+In a 2D block, we have to calculate the Thread ID. To do it, we have firstly to calculate the id on the x axis and on the y axis. After that, we just have to sum them and we have the global Thread ID to process the image. 
+
+\lstset{language=C}
+\begin{lstlisting}
+__global__ void grayscale2D(uchar3 *input, uchar3 *output, int imgWidth, int imgHeight) {
+    //Calculate tid
+    int tidx = threadIdx.x + blockIdx.x * blockDim.x;
+    int tidy = threadIdx.y + blockIdx.y * blockDim.y;
+    if (tidx >= imgWidth || tidy >= imgHeight) return;
+
+    int tid =  tidx + (tidy * imgWidth);
+    [...]
+}
+\end{lstlisting}
+
+\section{Try experimenting with different 2D block size values}
+
+\section{Plot a graph of block size vs speedup}
+
+\section{Compare speedup with previous 1D grid}
+
+\section{Answer the questions in the upcoming slides, explain why}
+
+\subsection{What is the best configuration for thread blocks to implement grayscaling?}
+
+32x32 is the best implementation. Because, this way, we use the maximum number of threads in each block (1024 threads/block).
+
+\subsection{Which of the following block configs would result in the most number of threads in the SM?}
+
+512 threads/blk = 4*512 = 2,048 threads || 256 threads/blk = 4*256 = 1,024 threads
+
+The best implementation is 256 threads/block because that way we use the maximum of threads in each block without using more than the maximum number of threads that the SM can handle (1,536 threads).
+
+\subsection{Which of the following block configs would result in the most number of threads in the SM?}
+
+2000/512 = 3.91
+
+Because we have to handle all the vector, the grid will use 4 blocks (but 48 threads won't be use).
+
+\end{document}
