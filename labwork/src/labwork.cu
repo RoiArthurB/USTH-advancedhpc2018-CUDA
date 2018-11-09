@@ -185,8 +185,95 @@ void Labwork::labwork5_GPU() {
     
 }
 
-void Labwork::labwork6_GPU() {
+//labwork6a
+__global__ void binarize(uchar3 *input, uchar3 *output, int imgWidth, int imgHeight) {
+    //Calculate tid
+    int tidx = threadIdx.x + blockIdx.x * blockDim.x;
+    int tidy = threadIdx.y + blockIdx.y * blockDim.y;
+    if (tidx >= imgWidth || tidy >= imgHeight) return;
 
+    int tid =  tidx + (tidy * imgWidth);
+
+    //Process pixel
+    output[tid].z = output[tid].y = output[tid].x = (((int)(input[tid].x + input[tid].y + input[tid].z) / 3)/127)*255;
+}
+//labwork6b
+__global__ void brightnessControll(uchar3 *input, uchar3 *output, int imgWidth, int imgHeight, int value) {
+    //Calculate tid
+    int tidx = threadIdx.x + blockIdx.x * blockDim.x;
+    int tidy = threadIdx.y + blockIdx.y * blockDim.y;
+    if (tidx >= imgWidth || tidy >= imgHeight) return;
+
+    int tid =  tidx + (tidy * imgWidth);
+
+    //Process pixel
+    output[tid].x = min(255, max(0, input[tid].x + value));
+    output[tid].y = min(255, max(0, input[tid].y + value));
+    output[tid].z = min(255, max(0, input[tid].z + value));  
+}
+//labwork6c
+__global__ void blendingImg(uchar3 *input, uchar3 *output, int imgWidth, int imgHeight, uchar3 *secondImg, double weight) {
+    //Calculate tid
+    int tidx = threadIdx.x + blockIdx.x * blockDim.x;
+    int tidy = threadIdx.y + blockIdx.y * blockDim.y;
+    if (tidx >= imgWidth || tidy >= imgHeight) return;
+
+    int tid =  tidx + (tidy * imgWidth);
+
+    //Process pixel
+    output[tid].x = (weight * (double)input[tid].x) + ((1.0 - weight) * (double)secondImg[tid].x);
+    output[tid].y = (weight * (double)input[tid].y) + ((1.0 - weight) * (double)secondImg[tid].y);
+    output[tid].z = (weight * (double)input[tid].z) + ((1.0 - weight) * (double)secondImg[tid].z);
+}
+void Labwork::labwork6_GPU() {
+    // Preparing var
+    //======================
+    //Calculate number of pixels
+    int pixelCount = inputImage->width * inputImage->height;
+    outputImage = static_cast<char *>(malloc(pixelCount * 3));
+    uchar3 *devInput;
+    uchar3 *devImgProcessed;
+
+    //Allocate CUDA memory    
+    cudaMalloc(&devInput, pixelCount * sizeof(uchar3));
+    cudaMalloc(&devImgProcessed, pixelCount * sizeof(uchar3));
+    // Copy CUDA Memory from CPU to GPU
+    cudaMemcpy(devInput, inputImage->buffer, pixelCount * sizeof(uchar3), cudaMemcpyHostToDevice);
+
+    // Processing
+    //======================
+    // Start GPU processing (KERNEL)
+    //Create 32x32 Blocks
+    dim3 blockSize = dim3(32, 32);
+    dim3 gridSize = dim3((inputImage->width + (blockSize.x-1))/blockSize.x, 
+        (inputImage->height  + (blockSize.y-1))/blockSize.y);
+    
+    //labwork6a
+    //binarize<<<gridSize, blockSize>>>(devInput, devImgProcessed, inputImage->width, inputImage->height);
+    
+    //labwork6b
+    brightnessControll<<<gridSize, blockSize>>>(devInput, devImgProcessed, inputImage->width, inputImage->height, 50);
+    
+    //labwork6c
+    /*
+    uchar3 *secondImg;
+
+    cudaMalloc(&secondImg, pixelCount * sizeof(uchar3));
+    cudaMemcpy(secondImg, inputSecondImage->buffer, pixelCount * sizeof(uchar3), cudaMemcpyHostToDevice);
+
+    blendingImg<<<gridSize, blockSize>>>(devInput, devImgProcessed, inputImage->width, inputImage->height, secondImg, 0.5);
+
+    // Copy CUDA Memory from GPU to CPU
+    cudaMemcpy(outputImage, devImgProcessed, pixelCount * sizeof(uchar3), cudaMemcpyDeviceToHost);
+
+    cudaFree(&secondImg);
+    */
+
+    // Cleaning
+    //======================
+    // Free CUDA Memory
+    cudaFree(&devInput);
+    cudaFree(&devImgProcessed);
 }
 
 __global__ void grayscale2D(uchar3 *input, int *histo, int imgWidth, int imgHeight) {
