@@ -574,6 +574,21 @@ void Labwork::labwork8_GPU() {
 typedef struct {
   unsigned int histogram[256];
 } arrayOfHistograms;
+__global__ void grayscaleImgAndHisto(uchar3 *input, uchar3 *output, int *histo, int imgWidth, int imgHeight) {
+    //Calculate tid
+    unsigned int tidx = threadIdx.x + blockIdx.x * blockDim.x;
+    unsigned int tidy = threadIdx.y + blockIdx.y * blockDim.y;
+    if (tidx >= imgWidth || tidy >= imgHeight) return;
+
+    int gtid =  tidx + (tidy * imgWidth);
+
+    //Process pixel
+    unsigned int g = ((int)input[gtid].x + (int)input[gtid].y + (int)input[gtid].z) / 3;
+    
+    // Outputs
+    output[gtid].x = output[gtid].y = output[gtid].z = g;
+    histo[gtid] = g;
+}
 __global__ void localGatherHisto(int *input, int imgWidth, arrayOfHistograms *arrayOfHisto) {
     // One thread(histo) / row
     unsigned int localHisto[256] = {0};
@@ -584,9 +599,6 @@ __global__ void localGatherHisto(int *input, int imgWidth, arrayOfHistograms *ar
     
     //Store to SoA histo
     memcpy(arrayOfHisto[blockIdx.y].histogram, localHisto, sizeof(int)*256);
-    
-//    if( blockIdx.y == 0)        
-//        printf("\t[localGatherHisto] FINISHED %dpx/%drow\n", imgWidth, gridDim.y);
     
 }
 __global__ void reduceHistogram(arrayOfHistograms *arrayOfHisto, int *globalHisto, int imgHeight){
@@ -610,13 +622,45 @@ __global__ void reduceHistogram(arrayOfHistograms *arrayOfHisto, int *globalHist
     // Copy output histogram
     if(threadIdx.x == 0)
         memcpy(globalHisto, sharedHisto, sizeof(int)*256);
-        
-    
-//    if( blockIdx.y == 0)        
-//        printf("\t[reduceHistogram] FINISHED\n");
 }
-__global__ void intensityProbability(float *proba, int *globalHisto, int totalPx){
-    proba[threadIdx.x] = globalHisto[threadIdx.x]/totalPx;
+__global__ void cdf(int *imageHisto, int totalPx){
+    
+    // Const after init
+    int cdfMin = 0;
+    int denominator = 0;
+    bool cdfMinFounded = 0;
+    
+    int cdfCumul = 0;
+            
+    for(int i = 0; i < 256; i++){
+        if(imageHisto[i] != 0){
+            // First histogram value
+            // Init equalization function
+            if( !cdfMinFounded ){ 
+                cdfMin = imageHisto[i];
+                denominator = totalPx - cdfMin;
+                cdfMinFounded = 1;
+            }
+            
+            // Processing
+            //----------------------
+            cdfCumul += imageHisto[i];
+            // Change histo to equalized value index
+            imageHisto[i] = round( ((float)( (float)(cdfCumul - cdfMin) / denominator ) * 255) );
+        }
+    }
+}
+__global__ void imageEqualizer(int *imageHistoEqualized, uchar3 *imgGrayscaled, int imgWidth, int imgHeight) {
+    //Calculate tid
+    unsigned int tidx = threadIdx.x + blockIdx.x * blockDim.x;
+    unsigned int tidy = threadIdx.y + blockIdx.y * blockDim.y;
+    if (tidx >= imgWidth || tidy >= imgHeight) return;
+
+    int gtid =  tidx + (tidy * imgWidth);
+
+    // Output
+    imgGrayscaled[gtid].x = imgGrayscaled[gtid].y = imgGrayscaled[gtid].z = 
+        imageHistoEqualized[ imgGrayscaled[gtid].x ];
 }
 void Labwork::labwork9_GPU() {
 
@@ -632,10 +676,12 @@ void Labwork::labwork9_GPU() {
     //Calculate number of pixels
     int pixelCount = inputImage->width * inputImage->height;
     uchar3 *devInput;
+    uchar3 *devGray;
     int *devHisto;
 
     //Allocate CUDA memory    
     cudaMalloc(&devInput, pixelCount * sizeof(uchar3));
+    cudaMalloc(&devGray, pixelCount * sizeof(uchar3));
     cudaMalloc(&devHisto, pixelCount * sizeof(int));
     // Copy CUDA Memory from CPU to GPU
     cudaMemcpy(devInput, inputImage->buffer, pixelCount * sizeof(uchar3), cudaMemcpyHostToDevice);
@@ -648,11 +694,11 @@ void Labwork::labwork9_GPU() {
     // Processing
     //----------------------
     // Start GPU processing (KERNEL)
-    grayscale2D<<<gridSize, blockSize>>>(devInput, devHisto, inputImage->width, inputImage->height);
+    grayscaleImgAndHisto<<<gridSize, blockSize>>>(devInput, devGray, devHisto, inputImage->width, inputImage->height);
 
     // Cleaning
     //----------------------
-    //cudaFree(&devInput);
+    cudaFree(&devInput);
 
     //======================
     // !GRAYSCALING
@@ -683,7 +729,32 @@ void Labwork::labwork9_GPU() {
 
     //======================
     // !HISTOGRAM
+ 
+    /*  +---------+
+        |   9.b   |
+        +---------+ */
     
+    // HISTOGRAM EQUALIZATION
+    //======================
+    // Preparing var
+    //----------------------
+    outputImage = static_cast<char *>(malloc(pixelCount * 3));
+    
+    // Processing
+    //----------------------  
+    cdf<<<dim3(1,1,1), dim3(1,1,1)>>>(histoOfImage, pixelCount);
+    
+    imageEqualizer<<<gridSize, blockSize>>>(histoOfImage, devGray, inputImage->width, inputImage->height);
+    
+    // Cleaning
+    //----------------------
+    cudaMemcpy(outputImage, devGray, pixelCount * sizeof(uchar3), cudaMemcpyDeviceToHost);
+    
+    cudaFree(&devGray);
+    cudaFree(&histoOfImage);
+    
+    //======================
+    // !HISTOGRAM EQUALIZATION
 }
 
 void Labwork::labwork10_GPU() {
