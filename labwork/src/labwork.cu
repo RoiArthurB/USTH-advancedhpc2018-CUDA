@@ -571,8 +571,119 @@ void Labwork::labwork8_GPU() {
     
 }
 
+typedef struct {
+  unsigned int histogram[256];
+} arrayOfHistograms;
+__global__ void localGatherHisto(int *input, int imgWidth, arrayOfHistograms *arrayOfHisto) {
+    // One thread(histo) / row
+    unsigned int localHisto[256] = {0};
+    
+    //Calculate row histo
+    for(int i = 0; i < imgWidth; i++)
+        localHisto[ input[ blockIdx.y*imgWidth + i] ]++;
+    
+    //Store to SoA histo
+    memcpy(arrayOfHisto[blockIdx.y].histogram, localHisto, sizeof(int)*256);
+    
+//    if( blockIdx.y == 0)        
+//        printf("\t[localGatherHisto] FINISHED %dpx/%drow\n", imgWidth, gridDim.y);
+    
+}
+__global__ void reduceHistogram(arrayOfHistograms *arrayOfHisto, int *globalHisto, int imgHeight){
+    // [Optimization] Final histogram in shared memory    
+    __shared__ unsigned int sharedHisto[256];
+    // [Optimization] in local memory
+    arrayOfHistograms *localArrayOfHisto = arrayOfHisto;
+    
+    // Init shared histo
+    sharedHisto[threadIdx.x] = 0;
+    
+    __syncthreads();
+    
+    // Get the sum of particular histogram index
+    //from all the previous blocks (during gather process)
+    for (int row = 0; row < imgHeight; row++)            
+        sharedHisto[threadIdx.x] += localArrayOfHisto[row].histogram[threadIdx.x];
+        
+    __syncthreads();
+    
+    // Copy output histogram
+    if(threadIdx.x == 0)
+        memcpy(globalHisto, sharedHisto, sizeof(int)*256);
+        
+    
+//    if( blockIdx.y == 0)        
+//        printf("\t[reduceHistogram] FINISHED\n");
+}
+__global__ void intensityProbability(float *proba, int *globalHisto, int totalPx){
+    proba[threadIdx.x] = globalHisto[threadIdx.x]/totalPx;
+}
 void Labwork::labwork9_GPU() {
 
+    /*  +---------+
+        |   9.a   |
+        +---------+ */
+
+    // GRAYSCALING
+    //======================
+    
+    // Preparing var
+    //----------------------
+    //Calculate number of pixels
+    int pixelCount = inputImage->width * inputImage->height;
+    uchar3 *devInput;
+    int *devHisto;
+
+    //Allocate CUDA memory    
+    cudaMalloc(&devInput, pixelCount * sizeof(uchar3));
+    cudaMalloc(&devHisto, pixelCount * sizeof(int));
+    // Copy CUDA Memory from CPU to GPU
+    cudaMemcpy(devInput, inputImage->buffer, pixelCount * sizeof(uchar3), cudaMemcpyHostToDevice);
+    
+    //Create 32x32 Blocks
+    dim3 blockSize = dim3(32, 32);
+    dim3 gridSize = dim3((inputImage->width + (blockSize.x-1))/blockSize.x, 
+        (inputImage->height  + (blockSize.y-1))/blockSize.y);
+
+    // Processing
+    //----------------------
+    // Start GPU processing (KERNEL)
+    grayscale2D<<<gridSize, blockSize>>>(devInput, devHisto, inputImage->width, inputImage->height);
+
+    // Cleaning
+    //----------------------
+    //cudaFree(&devInput);
+
+    //======================
+    // !GRAYSCALING
+
+    // HISTOGRAM
+    //======================
+    
+    // Preparing var
+    //----------------------
+    arrayOfHistograms *arrayOfHisto;
+    int *histoOfImage;
+
+    // One histo[256] per row
+    cudaMalloc(&arrayOfHisto, inputImage->height * sizeof(arrayOfHistograms));
+    cudaMalloc(&histoOfImage, 256 * sizeof(int));
+    
+    // Processing
+    //----------------------    
+    localGatherHisto<<<dim3(1, inputImage->height, 1), dim3(1,1,1)>>>(devHisto, inputImage->width, arrayOfHisto);
+    
+    // SoA to AoS
+    reduceHistogram<<<dim3(1,1,1), dim3(256,1,1)>>>(arrayOfHisto, histoOfImage, inputImage->height);
+
+    // Cleaning
+    //----------------------
+    cudaFree(&arrayOfHisto);
+    cudaFree(&devHisto);
+
+    //======================
+    // !HISTOGRAM
+    
 }
 
 void Labwork::labwork10_GPU() {
