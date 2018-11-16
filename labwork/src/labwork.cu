@@ -63,18 +63,22 @@ int main(int argc, char **argv) {
             break;
         case 7:
             labwork.labwork7_GPU();
+            printf("[ALGO ONLY] labwork %d ellapsed %.1fms\n", lwNum, timer.getElapsedTimeInMilliSec());
             labwork.saveOutputImage("labwork7-gpu-out.jpg");
             break;
         case 8:
             labwork.labwork8_GPU();
+            printf("[ALGO ONLY] labwork %d ellapsed %.1fms\n", lwNum, timer.getElapsedTimeInMilliSec());
             labwork.saveOutputImage("labwork8-gpu-out.jpg");
             break;
         case 9:
             labwork.labwork9_GPU();
+            printf("[ALGO ONLY] labwork %d ellapsed %.1fms\n", lwNum, timer.getElapsedTimeInMilliSec());
             labwork.saveOutputImage("labwork9-gpu-out.jpg");
             break;
         case 10:
-            labwork.labwork10_GPU();
+            labwork.labwork10_GPU(argv);
+            printf("[ALGO ONLY] labwork %d ellapsed %.1fms\n", lwNum, timer.getElapsedTimeInMilliSec());
             labwork.saveOutputImage("labwork10-gpu-out.jpg");
             break;
     }
@@ -584,7 +588,6 @@ __global__ void grayscaleImgAndHisto(uchar3 *input, uchar3 *output, int *histo, 
 
     //Process pixel
     unsigned int g = ((int)input[gtid].x + (int)input[gtid].y + (int)input[gtid].z) / 3;
-    
     // Outputs
     output[gtid].x = output[gtid].y = output[gtid].z = g;
     histo[gtid] = g;
@@ -599,6 +602,9 @@ __global__ void localGatherHisto(int *input, int imgWidth, arrayOfHistograms *ar
     
     //Store to SoA histo
     memcpy(arrayOfHisto[blockIdx.y].histogram, localHisto, sizeof(int)*256);
+    
+//    if( blockIdx.y == 0)        
+//        printf("\t[localGatherHisto] FINISHED %dpx/%drow\n", imgWidth, gridDim.y);
     
 }
 __global__ void reduceHistogram(arrayOfHistograms *arrayOfHisto, int *globalHisto, int imgHeight){
@@ -622,6 +628,9 @@ __global__ void reduceHistogram(arrayOfHistograms *arrayOfHisto, int *globalHist
     // Copy output histogram
     if(threadIdx.x == 0)
         memcpy(globalHisto, sharedHisto, sizeof(int)*256);
+    
+//    if( blockIdx.y == 0)        
+//        printf("\t[reduceHistogram] FINISHED\n");
 }
 __global__ void cdf(int *imageHisto, int totalPx){
     
@@ -739,6 +748,10 @@ void Labwork::labwork9_GPU() {
     // Preparing var
     //----------------------
     outputImage = static_cast<char *>(malloc(pixelCount * 3));
+    //uchar3 *devOutput;
+
+    //Allocate CUDA memory    
+    //cudaMalloc(&devOutput, pixelCount * sizeof(uchar3));
     
     // Processing
     //----------------------  
@@ -757,6 +770,202 @@ void Labwork::labwork9_GPU() {
     // !HISTOGRAM EQUALIZATION
 }
 
-void Labwork::labwork10_GPU() {
-
+__global__ void kuwaharaFilter(uchar3 *input, Hsv in, int windowSize, uchar3 *out, int imgWidth, int imgHeight, int totalPx) {
+    //Calculate tid
+    unsigned int tidx = threadIdx.x + blockIdx.x * blockDim.x;
+    unsigned int tidy = threadIdx.y + blockIdx.y * blockDim.y;
+    if (tidx >= imgWidth || tidy >= imgHeight) return;
+    
+    int tid = tidx + (tidy * imgWidth);
+    
+    // Prepare local value 
+    double littleWindows[4] = {0.0};
+    double littleWindowsSd[4] = {0.0};
+    int lwAverageColor[4][3] = {0};
+    int lwPxCount[4] = {0};
+    
+    // Get average value of all windows
+    for (int x = 1 - windowSize; x <= windowSize - 1; x++){
+        for (int y = 1 - windowSize; y <= windowSize - 1; y++){
+            int i = tidx + x;
+            int j = tidy + y;
+            if ( (i < 0) ||
+                 (i >= imgWidth) ||
+                 (j < 0) ||
+                 (j >= imgHeight) ) continue;
+            int currentPos =j * imgWidth + i;
+            
+            // North West
+            if (x <= 0 && y <= 0)
+                i = 0; // Reuse var -> Optimisation
+            // North East
+            if (x >= 0 && y <= 0)
+                i = 1;
+            // South West
+            if (x <= 0 && y >= 0)
+                i = 2;
+            // South East
+            if (x >= 0 && y >= 0)
+                i = 3;
+            
+            littleWindows[i] += in.v[currentPos];
+            lwAverageColor[i][0] += input[currentPos].x;
+            lwAverageColor[i][1] += input[currentPos].y;
+            lwAverageColor[i][2] += input[currentPos].z;
+            lwPxCount[i]++;
+        }
+    }
+    for (int i = 0; i < 4; i ++)
+    {
+        littleWindows[i] /= lwPxCount[i];
+        
+        for(int j = 0; j < 3; j++)
+            lwAverageColor[i][j] /= lwPxCount[i];
+    }
+    
+    // Get SD value of all windows
+    for (int x = 1 - windowSize; x <= windowSize - 1; x++){
+        for (int y = 1 - windowSize; y <= windowSize - 1; y++){
+            int i = tidx + x;
+            int j = tidy + y;
+            if ( (i < 0) ||
+                 (i >= imgWidth) ||
+                 (j < 0) ||
+                 (j >= imgHeight) ) continue;
+            int currentPos =j * imgWidth + i;
+            
+            // North West
+            if (x <= 0 && y <= 0)
+                i = 0; // Reuse var -> Optimisation
+            // North East
+            if (x >= 0 && y <= 0)
+                i = 1;
+            // South West
+            if (x <= 0 && y >= 0)
+                i = 2;
+            // South East
+            if (x >= 0 && y >= 0)
+                i = 3;
+                
+            littleWindowsSd[i] += pow((in.v[currentPos] - littleWindows[i]), 2.0);
+        }
+    }
+    
+    for (int i = 0; i < 4; i ++)
+    {
+      littleWindowsSd[i] = sqrt(littleWindowsSd[i] / lwPxCount[i]);
+    }
+    
+    // Result
+    //=======================
+    // Get min val
+    double minLW = min(littleWindowsSd[0], min(littleWindowsSd[1], min(littleWindowsSd[2], littleWindowsSd[3]) ) );
+    if (minLW == littleWindowsSd[0])
+        tidx = 0; // Reuse var -> Optimisation
+    else if (minLW == littleWindowsSd[1])
+        tidx = 1;
+    else if (minLW == littleWindowsSd[2])
+        tidx = 2;
+    else
+        tidx = 3;
+    
+    out[tid].x = lwAverageColor[tidx][0];
+    out[tid].y = lwAverageColor[tidx][1];
+    out[tid].z = lwAverageColor[tidx][2];
 }
+void Labwork::labwork10_GPU(char **argv) {
+    // Check if I have everything to work
+    if ( !argv[3] ){
+        printf("I need a window size as last parameter...\n");
+        return;
+    }
+    int windowSize = (int)*argv[3];
+    if( windowSize % 2 == 0){
+        printf("The window size must be an odd number...\n");
+        return;
+    }
+    
+    
+    // KUWAHARA
+    //======================
+    
+    // Preparing var
+    //----------------------
+    //Calculate number of pixels
+    int imgWidth = inputImage->width; int imgHeight = inputImage->height;
+    int pixelCount = imgWidth * imgHeight;
+    
+    //Kernel param
+    dim3 blockSize = dim3(32, 32);
+    dim3 gridSize = dim3((imgWidth + (blockSize.x-1))/blockSize.x, 
+                        (imgHeight  + (blockSize.y-1))/blockSize.y);
+    /*
+    printf("\timage : %dx%d, totalPixel : %d\n", imgWidth, imgHeight, pixelCount);
+    printf("\tblockSize : %dx%dx%d, gridSize : %dx%dx%d\n", blockSize.x, blockSize.y, blockSize.z, gridSize.x, gridSize.y, gridSize.z);
+    printf("\tnbrBlock : %d, threadBlock : %d, gThreads : %d\n", gridSize.x * gridSize.y * gridSize.z, blockSize.x * blockSize.y * blockSize.z, (blockSize.x * blockSize.y * blockSize.z) * gridSize.x * gridSize.y * gridSize.z);
+    printf("== === == === == === == === == === ==\n");
+    */
+    //HSV var
+    Hsv hsvArray;
+    cudaMalloc((void**)&hsvArray.h, pixelCount * sizeof(double));
+    cudaMalloc((void**)&hsvArray.s, pixelCount * sizeof(double));
+    cudaMalloc((void**)&hsvArray.v, pixelCount * sizeof(double));
+    
+    //Input image for Kernel
+    uchar3 *devInput; 
+    cudaMalloc(&devInput, pixelCount * sizeof(uchar3));
+    cudaMemcpy(devInput, inputImage->buffer, pixelCount * sizeof(uchar3), cudaMemcpyHostToDevice);
+    uchar3 *devOutput; 
+    cudaMalloc(&devOutput, pixelCount * sizeof(uchar3));
+    
+    int *lowestSDWindow;
+    cudaMalloc(&lowestSDWindow, pixelCount * sizeof(int));
+
+    // Processing
+    //----------------------
+    // Start GPU processing (KERNEL)
+    //printf("=======LAUNCH RGB2HSV=======\n");
+    RGB2HSV<<<gridSize, blockSize>>>(devInput, hsvArray, imgWidth, imgHeight);
+        
+    kuwaharaFilter<<<gridSize, blockSize>>>(devInput, hsvArray, windowSize, devOutput, imgWidth, imgHeight, pixelCount);
+    
+    // Cleaning
+    //----------------------
+    outputImage = static_cast<char *>(malloc(pixelCount * 3));
+    cudaMemcpy(outputImage, devOutput, pixelCount * sizeof(uchar3), cudaMemcpyDeviceToHost);
+    
+    cudaFree(devOutput);
+    cudaFree(devInput);
+    
+    cudaFree(lowestSDWindow);
+    
+    cudaFree(hsvArray.h);
+    cudaFree(hsvArray.s);
+    cudaFree(hsvArray.v);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
