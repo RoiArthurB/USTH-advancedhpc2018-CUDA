@@ -77,7 +77,15 @@ int main(int argc, char **argv) {
             labwork.saveOutputImage("labwork9-gpu-out.jpg");
             break;
         case 10:
-            labwork.labwork10_GPU(argv);
+        /*
+            if ( !argv[3] ){
+                printf("I need a window size as last parameter...\n");
+                return;
+            }else{
+                labwork.labwork10_GPU(*argv[3]);//*argv); 
+            }
+        */
+            labwork.labwork10_GPU();
             printf("[ALGO ONLY] labwork %d ellapsed %.1fms\n", lwNum, timer.getElapsedTimeInMilliSec());
             labwork.saveOutputImage("labwork10-gpu-out.jpg");
             break;
@@ -770,7 +778,7 @@ void Labwork::labwork9_GPU() {
     // !HISTOGRAM EQUALIZATION
 }
 
-__global__ void kuwaharaFilter(uchar3 *input, Hsv in, int windowSize, uchar3 *out, int imgWidth, int imgHeight, int totalPx) {
+__global__ void kuwaharaFilter(uchar3 *input, int windowSize, uchar3 *out, int imgWidth, int imgHeight, int totalPx) {
     //Calculate tid
     unsigned int tidx = threadIdx.x + blockIdx.x * blockDim.x;
     unsigned int tidy = threadIdx.y + blockIdx.y * blockDim.y;
@@ -778,13 +786,14 @@ __global__ void kuwaharaFilter(uchar3 *input, Hsv in, int windowSize, uchar3 *ou
     
     int tid = tidx + (tidy * imgWidth);
     
-    // Prepare local value 
+    // Prepare local value
     double littleWindows[4] = {0.0};
     double littleWindowsSd[4] = {0.0};
     int lwAverageColor[4][3] = {0};
     int lwPxCount[4] = {0};
     
     // Get average value of all windows
+    //=======================
     for (int x = 1 - windowSize; x <= windowSize - 1; x++){
         for (int y = 1 - windowSize; y <= windowSize - 1; y++){
             int i = tidx + x;
@@ -793,7 +802,7 @@ __global__ void kuwaharaFilter(uchar3 *input, Hsv in, int windowSize, uchar3 *ou
                  (i >= imgWidth) ||
                  (j < 0) ||
                  (j >= imgHeight) ) continue;
-            int currentPos =j * imgWidth + i;
+            int loopTid = i + j * imgWidth;
             
             // North West
             if (x <= 0 && y <= 0)
@@ -808,10 +817,17 @@ __global__ void kuwaharaFilter(uchar3 *input, Hsv in, int windowSize, uchar3 *ou
             if (x >= 0 && y >= 0)
                 i = 3;
             
-            littleWindows[i] += in.v[currentPos];
-            lwAverageColor[i][0] += input[currentPos].x;
-            lwAverageColor[i][1] += input[currentPos].y;
-            lwAverageColor[i][2] += input[currentPos].z;
+            //reuse var
+            int temp = input[loopTid].x;
+            j = input[loopTid].y;
+            loopTid = input[loopTid].z;
+            
+            // Pre-processing px
+            lwAverageColor[i][0] += temp;
+            lwAverageColor[i][1] += j;
+            lwAverageColor[i][2] += loopTid;
+            // Get V value
+            littleWindows[i] += max(temp, max(j, loopTid));
             lwPxCount[i]++;
         }
     }
@@ -824,6 +840,7 @@ __global__ void kuwaharaFilter(uchar3 *input, Hsv in, int windowSize, uchar3 *ou
     }
     
     // Get SD value of all windows
+    //=======================
     for (int x = 1 - windowSize; x <= windowSize - 1; x++){
         for (int y = 1 - windowSize; y <= windowSize - 1; y++){
             int i = tidx + x;
@@ -832,7 +849,7 @@ __global__ void kuwaharaFilter(uchar3 *input, Hsv in, int windowSize, uchar3 *ou
                  (i >= imgWidth) ||
                  (j < 0) ||
                  (j >= imgHeight) ) continue;
-            int currentPos =j * imgWidth + i;
+            int loopTid = i + j * imgWidth;
             
             // North West
             if (x <= 0 && y <= 0)
@@ -847,7 +864,7 @@ __global__ void kuwaharaFilter(uchar3 *input, Hsv in, int windowSize, uchar3 *ou
             if (x >= 0 && y >= 0)
                 i = 3;
                 
-            littleWindowsSd[i] += pow((in.v[currentPos] - littleWindows[i]), 2.0);
+            littleWindowsSd[i] += pow((max(input[loopTid].x, max(input[loopTid].y, input[loopTid].z)) - littleWindows[i]), 2.0);
         }
     }
     
@@ -858,7 +875,7 @@ __global__ void kuwaharaFilter(uchar3 *input, Hsv in, int windowSize, uchar3 *ou
     
     // Result
     //=======================
-    // Get min val
+    // Get window with lowest SD
     double minLW = min(littleWindowsSd[0], min(littleWindowsSd[1], min(littleWindowsSd[2], littleWindowsSd[3]) ) );
     if (minLW == littleWindowsSd[0])
         tidx = 0; // Reuse var -> Optimisation
@@ -873,18 +890,8 @@ __global__ void kuwaharaFilter(uchar3 *input, Hsv in, int windowSize, uchar3 *ou
     out[tid].y = lwAverageColor[tidx][1];
     out[tid].z = lwAverageColor[tidx][2];
 }
-void Labwork::labwork10_GPU(char **argv) {
-    // Check if I have everything to work
-    if ( !argv[3] ){
-        printf("I need a window size as last parameter...\n");
-        return;
-    }
-    int windowSize = (int)*argv[3];
-    if( windowSize % 2 == 0){
-        printf("The window size must be an odd number...\n");
-        return;
-    }
-    
+void Labwork::labwork10_GPU(){
+    int windowSize = 3;
     
     // KUWAHARA
     //======================
@@ -899,17 +906,6 @@ void Labwork::labwork10_GPU(char **argv) {
     dim3 blockSize = dim3(32, 32);
     dim3 gridSize = dim3((imgWidth + (blockSize.x-1))/blockSize.x, 
                         (imgHeight  + (blockSize.y-1))/blockSize.y);
-    /*
-    printf("\timage : %dx%d, totalPixel : %d\n", imgWidth, imgHeight, pixelCount);
-    printf("\tblockSize : %dx%dx%d, gridSize : %dx%dx%d\n", blockSize.x, blockSize.y, blockSize.z, gridSize.x, gridSize.y, gridSize.z);
-    printf("\tnbrBlock : %d, threadBlock : %d, gThreads : %d\n", gridSize.x * gridSize.y * gridSize.z, blockSize.x * blockSize.y * blockSize.z, (blockSize.x * blockSize.y * blockSize.z) * gridSize.x * gridSize.y * gridSize.z);
-    printf("== === == === == === == === == === ==\n");
-    */
-    //HSV var
-    Hsv hsvArray;
-    cudaMalloc((void**)&hsvArray.h, pixelCount * sizeof(double));
-    cudaMalloc((void**)&hsvArray.s, pixelCount * sizeof(double));
-    cudaMalloc((void**)&hsvArray.v, pixelCount * sizeof(double));
     
     //Input image for Kernel
     uchar3 *devInput; 
@@ -917,17 +913,11 @@ void Labwork::labwork10_GPU(char **argv) {
     cudaMemcpy(devInput, inputImage->buffer, pixelCount * sizeof(uchar3), cudaMemcpyHostToDevice);
     uchar3 *devOutput; 
     cudaMalloc(&devOutput, pixelCount * sizeof(uchar3));
-    
-    int *lowestSDWindow;
-    cudaMalloc(&lowestSDWindow, pixelCount * sizeof(int));
-
     // Processing
     //----------------------
     // Start GPU processing (KERNEL)
-    //printf("=======LAUNCH RGB2HSV=======\n");
-    RGB2HSV<<<gridSize, blockSize>>>(devInput, hsvArray, imgWidth, imgHeight);
         
-    kuwaharaFilter<<<gridSize, blockSize>>>(devInput, hsvArray, windowSize, devOutput, imgWidth, imgHeight, pixelCount);
+    kuwaharaFilter<<<gridSize, blockSize>>>(devInput, windowSize, devOutput, imgWidth, imgHeight, pixelCount);
     
     // Cleaning
     //----------------------
@@ -936,12 +926,6 @@ void Labwork::labwork10_GPU(char **argv) {
     
     cudaFree(devOutput);
     cudaFree(devInput);
-    
-    cudaFree(lowestSDWindow);
-    
-    cudaFree(hsvArray.h);
-    cudaFree(hsvArray.s);
-    cudaFree(hsvArray.v);
 }
 
 
