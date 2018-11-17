@@ -49,12 +49,6 @@
 \definecolor{mPurple}{rgb}{0.58,0,0.82}
 \definecolor{backgroundColour}{rgb}{0.95,0.95,0.92}
 
-\lstdefinestyle{DOS}
-{
-    backgroundcolor=\color{black},       
-    breaklines=true,                
-    basicstyle=\scriptsize\color{white}\ttfamily
-}
 \lstdefinestyle{CStyle}{
     backgroundcolor=\color{backgroundColour},   
     commentstyle=\color{mGreen},
@@ -79,7 +73,7 @@
 
 %%% The "real" document content comes below...
 
-\title{Report 1}
+\title{Report 3}
 \author{Arthur BRUGIERE}
 %\date{} % Activate to display a given date or no date (if empty),
          % otherwise the current date is printed 
@@ -87,41 +81,68 @@
 \begin{document}
 \maketitle
 
-\section{How you implement the conversion}
+\section{Explain how you implement the labwork}
 
-Simply by adding the line {\it \#prama omp parallel for} before each loop {\it for}.
-
-The result look like this
+The first thing that I have done to implement that labwork is to create and allocate memory for GPU's variable.
 
 \begin{lstlisting}[style=CStyle]
-#pragma omp parallel for
-for (int j = 0; j < 100; j++) {     // let's do it 100 times, otherwise it's too fast!
-    #pragma omp parallel for
-    for (int i = 0; i < pixelCount; i++) {
-        [CODE]
-    }
+// Declare variable for CUDA Kernel
+uchar3 *devInput;
+uchar3 *devGray;
+
+// Allocate CUDA memory
+cudaMalloc(&devInput, pixelCount * sizeof(uchar3));
+cudaMalloc(&devGray, pixelCount * sizeof(uchar3));
+
+// Copy CUDA Memory from CPU to GPU
+cudaMemcpy(devInput, inputImage->buffer, pixelCount * sizeof(uchar3), cudaMemcpyHostToDevice);
+\end{lstlisting}
+
+After that, I have to create a function (that I will call {\it kernel}) with the prefix {\it \_\_global\_\_}. That function is the one which will be executed by each thread on the GPU.
+
+That function take in input the image buffer, and create in output the image grayscaled. Each thread will process only 1 pixel of the image.
+
+\begin{lstlisting}[style=CStyle]
+__global__ void grayscale(uchar3 *input, uchar3 *output) {
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+    output[tid].x = (input[tid].x + input[tid].y + input[tid].z) / 3;
+    output[tid].z = output[tid].y = output[tid].x;
 }
 \end{lstlisting}
 
-\section{What’s the speedup?}
+Finally, I have to call that kernel in my labwork function by specifying the size of my block, of my grid and the thread's number of each blocks.
 
-\begin{lstlisting}[style=DOS]
-arthurbrugiere@ictserver3:~/advancedhpc2018/labwork/build$ ./labwork 1 ../data/eiffel.jpg 
-USTH ICT Master 2018, Advanced Programming for HPC.
-Warming up...
-Starting labwork 1
-labwork 1 CPU ellapsed 3054.5ms
-labwork 1 GPU ellapsed 746.5ms
+\begin{lstlisting}[style=CStyle]
+// Start GPU processing (KERNEL)
+int blockSize = 1024;
+int numBlock = pixelCount / blockSize;
+grayscale<<<numBlock, blockSize>>>(devInput, devGray);
 \end{lstlisting}
 
-The GPU's calculation time is almost the quarter of the CPU's calculation time.
+Finally I have to copy back my image output from the GPU memory to the CPU memory.
 
-%\section{Try experimenting with different OpenMP parameters}
+\begin{lstlisting}[style=CStyle]
+// Allocate CPU memory for output image
+outputImage = static_cast<char *>(malloc(pixelCount * 3));
+
+// Copy CUDA Memory from GPU to CPU
+cudaMemcpy(outputImage, devGray, pixelCount * sizeof(uchar3), cudaMemcpyDeviceToHost);
+\end{lstlisting}
+
+Before finishing my function, I have to free all the memory use by the CPU and GPU (here, only for the GPU).
+
+\begin{lstlisting}[style=CStyle]
+// Free CUDA Memory
+cudaFree(&devInput);
+cudaFree(&devGray);
+\end{lstlisting}
+
+%\section{What’s the speedup?}
 %
-%\subsection{Team size}
+%\section{Try experimenting with different block size values}
 %
-%\subsection{static / dynamic}
+%\section{Plot a graph of block size vs speedup}
 %
-%\subsection{Plot a graph of team size vs speedup vs schedule}
+%\section{Discuss the graph}
 
 \end{document}

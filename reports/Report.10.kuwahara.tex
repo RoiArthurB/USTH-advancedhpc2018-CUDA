@@ -1,0 +1,174 @@
+% !TEX TS-program = pdflatex
+% !TEX encoding = UTF-8 Unicode
+
+\documentclass[11pt]{article} % use larger type; default would be 10pt
+
+\usepackage[utf8]{inputenc} % set input encoding (not needed with XeLaTeX)
+
+%%% PAGE DIMENSIONS
+\usepackage{geometry}
+\geometry{a4paper}
+
+\usepackage{graphicx} % support the \includegraphics command and options
+
+% \usepackage[parfill]{parskip} % Activate to begin paragraphs with an empty line rather than an indent
+
+%%% PACKAGES
+\usepackage{booktabs} % for much better looking tables
+\usepackage{array} 	  % for better arrays (eg matrices) in maths
+\usepackage{paralist} % very flexible & customisable lists (eg. enumerate/itemize, etc.)
+\usepackage{verbatim} % adds environment for commenting out blocks of text & for better verbatim
+\usepackage{subfig}   % make it possible to include more than one captioned figure/table in a single float
+
+% These packages are all incorporated in the memoir class to one degree or another...
+
+%%% HEADERS & FOOTERS
+\usepackage{fancyhdr} % This should be set AFTER setting up the page geometry
+\pagestyle{fancy} % options: empty , plain , fancy
+\renewcommand{\headrulewidth}{0pt} % customise the layout...
+\lhead{}\chead{}\rhead{} % Setup Header
+\lfoot{}\cfoot{\thepage}\rfoot{} % Setup Footer
+
+%%% SECTION TITLE APPEARANCE
+\usepackage{sectsty}
+\allsectionsfont{\sffamily\mdseries\upshape} % (See the fntguide.pdf for font help)
+% (This matches ConTeXt defaults)
+
+%%% ToC (table of contents) APPEARANCE
+%\usepackage[nottoc,notlof,notlot]{tocbibind} % Put the bibliography in the ToC
+%\usepackage[titles,subfigure]{tocloft} % Alter the style of the Table of Contents
+%\renewcommand{\cftsecfont}{\rmfamily\mdseries\upshape}
+%\renewcommand{\cftsecpagefont}{\rmfamily\mdseries\upshape} % No bold!
+
+%%% DEV & CODE 
+\usepackage{xcolor}
+\usepackage{listings} % for code presentation
+
+\definecolor{mGreen}{rgb}{0,0.6,0}
+\definecolor{mGray}{rgb}{0.5,0.5,0.5}
+\definecolor{mPurple}{rgb}{0.58,0,0.82}
+\definecolor{backgroundColour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{CStyle}{
+    backgroundcolor=\color{backgroundColour},   
+    commentstyle=\color{mGreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{mGray},
+    stringstyle=\color{mPurple},
+    basicstyle=\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2,
+    language=C
+}
+
+%%% END Article customizations
+
+%%% The "real" document content comes below...
+
+\title{Report 10}
+\author{Arthur BRUGIERE}
+%\date{} % Activate to display a given date or no date (if empty),
+         % otherwise the current date is printed 
+
+\begin{document}
+\maketitle
+
+\section{Explain how you implement the labworks}
+
+\subsection{First kernel : HSV}
+
+To implement this labwork I have, firstly, get the V value from the HSV SoA of the image. To do it, I have implemented a simplified kernel of {\it RGB2HSV}.
+
+\begin{lstlisting}[style=CStyle]
+__global__ void RGB2V(uchar3 *in, double *out, int imgWidth, int imgHeight) {
+    //Calculate tid
+    unsigned int tidx = threadIdx.x + blockIdx.x * blockDim.x;
+    unsigned int tidy = threadIdx.y + blockIdx.y * blockDim.y;
+    if (tidx >= imgWidth || tidy >= imgHeight) return;
+    
+    int tid =  tidx + (tidy * imgWidth);
+    
+    out[tid] = max((double)in[tid].x / 255.0, max((double)in[tid].y / 255.0, (double)in[tid].z / 255.0));
+}
+\end{lstlisting}
+
+\subsection{Second kernel : Process kuwahara filter}
+
+After that, I have process the 4 needed windows around my pixel in each thread (One thread == One pixel == 4 windows) to get the lowest standard deviation of brightness.
+
+To calculate that standard deviation (SD), we firstly have to get the average value of every window. 
+
+\begin{lstlisting}[style=CStyle]
+// Get average V value
+for (int x = 1 - windowSize; x <= windowSize - 1; x++){
+	for (int y = 1 - windowSize; y <= windowSize - 1; y++){
+		
+		[...]
+
+		littleWindows[i] += input[loopTid];
+		lwPxCount[i]++;
+	}
+}
+for (int i = 0; i < 4; i ++){
+    littleWindows[i] /= lwPxCount[i];
+}
+\end{lstlisting}
+
+After what we simply have to use that value to have SD value.
+
+\begin{lstlisting}[style=CStyle]
+// Get SD value
+
+for (int x = 1 - windowSize; x <= windowSize - 1; x++){
+	for (int y = 1 - windowSize; y <= windowSize - 1; y++){
+		
+		[...]
+
+        littleWindowsSd[i] += pow((input[loopTid] - littleWindows[i]), 2.0);
+	}
+}
+for (int i = 0; i < 4; i ++){
+      littleWindowsSd[i] = sqrt(littleWindowsSd[i] / lwPxCount[i]);
+}
+\end{lstlisting}
+
+\subsection{Third kernel : Applying filter to image}
+
+Finally, knowing which window have the lowest SD, we can process each pixel by applying the average value of all pixel on that pixel.
+
+\begin{lstlisting}[style=CStyle]
+for (){
+    // Pre-processing px
+    lwAverageColor[0] += input[loopTid].x;
+    lwAverageColor[1] += input[loopTid].y;
+    lwAverageColor[2] += input[loopTid].z;	
+}
+
+out[tid].x = lwAverageColor[0];
+out[tid].y = lwAverageColor[1];
+out[tid].z = lwAverageColor[2];
+\end{lstlisting}
+
+\section{Explain and measure speedup, if you have performance optimizations}
+
+\subsection{Reducing number of kernel}
+
+The first thing was to reduce the number of kernel.
+
+Even if each kernel are small and it could improve performance, the memory transfer between them was a performance lost. So I merge my kernels into a big one.
+
+Merging kernels wasn't a bad idea, but I have to be very careful with my variables.
+
+\subsection{Algorithm optimization}
+
+Because each thread haven't much memory space, I had to optimize all my variables inside my big kernel. If I do not and one of my memory is too big, it will be moved to a bigger space level ({\it shared}, {\it global}, else) and it will be a performance lost.
+
+\end{document}

@@ -49,12 +49,6 @@
 \definecolor{mPurple}{rgb}{0.58,0,0.82}
 \definecolor{backgroundColour}{rgb}{0.95,0.95,0.92}
 
-\lstdefinestyle{DOS}
-{
-    backgroundcolor=\color{black},       
-    breaklines=true,                
-    basicstyle=\scriptsize\color{white}\ttfamily
-}
 \lstdefinestyle{CStyle}{
     backgroundcolor=\color{backgroundColour},   
     commentstyle=\color{mGreen},
@@ -79,7 +73,7 @@
 
 %%% The "real" document content comes below...
 
-\title{Report 1}
+\title{Report 7}
 \author{Arthur BRUGIERE}
 %\date{} % Activate to display a given date or no date (if empty),
          % otherwise the current date is printed 
@@ -87,41 +81,10 @@
 \begin{document}
 \maketitle
 
-\section{How you implement the conversion}
+\section{Explain how you implement the labworks}
 
-Simply by adding the line {\it \#prama omp parallel for} before each loop {\it for}.
-
-The result look like this
-
-\begin{lstlisting}[style=CStyle]
-#pragma omp parallel for
-for (int j = 0; j < 100; j++) {     // let's do it 100 times, otherwise it's too fast!
-    #pragma omp parallel for
-    for (int i = 0; i < pixelCount; i++) {
-        [CODE]
-    }
-}
-\end{lstlisting}
-
-\section{What’s the speedup?}
-
-\begin{lstlisting}[style=DOS]
-arthurbrugiere@ictserver3:~/advancedhpc2018/labwork/build$ ./labwork 1 ../data/eiffel.jpg 
-USTH ICT Master 2018, Advanced Programming for HPC.
-Warming up...
-Starting labwork 1
-labwork 1 CPU ellapsed 3054.5ms
-labwork 1 GPU ellapsed 746.5ms
-\end{lstlisting}
-
-The GPU's calculation time is almost the quarter of the CPU's calculation time.
-
-%\section{Try experimenting with different OpenMP parameters}
+%\section{Explain and measure speedup, if you have performance optimizations}
 %
-%\subsection{Team size}
-%
-%\subsection{static / dynamic}
-%
-%\subsection{Plot a graph of team size vs speedup vs schedule}
+%\section{Try experimenting with different 2D block size values}
 
 \end{document}

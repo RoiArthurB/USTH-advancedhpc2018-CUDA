@@ -441,7 +441,11 @@ __global__ void RGB2HSV(uchar3 *in, Hsv out, int imgWidth, int imgHeight) {
     if( pxMax <= 0.0 ) { // NOTE: if Max is == 0, this divide would cause a crash
         // if max is 0, then r = g = b = 0              
         // s = 0, h is undefined
-        s = 0.0;
+        out.h[tid] = 0.0;
+        out.s[tid] = 0.0;
+        out.v[tid] = 0.0;
+        
+        return;
     } else {
         s = (delta / pxMax);
     }
@@ -609,11 +613,7 @@ __global__ void localGatherHisto(int *input, int imgWidth, arrayOfHistograms *ar
         localHisto[ input[ blockIdx.y*imgWidth + i] ]++;
     
     //Store to SoA histo
-    memcpy(arrayOfHisto[blockIdx.y].histogram, localHisto, sizeof(int)*256);
-    
-//    if( blockIdx.y == 0)        
-//        printf("\t[localGatherHisto] FINISHED %dpx/%drow\n", imgWidth, gridDim.y);
-    
+    memcpy(arrayOfHisto[blockIdx.y].histogram, localHisto, sizeof(int)*256);    
 }
 __global__ void reduceHistogram(arrayOfHistograms *arrayOfHisto, int *globalHisto, int imgHeight){
     // [Optimization] Final histogram in shared memory    
@@ -757,9 +757,6 @@ void Labwork::labwork9_GPU() {
     //----------------------
     outputImage = static_cast<char *>(malloc(pixelCount * 3));
     //uchar3 *devOutput;
-
-    //Allocate CUDA memory    
-    //cudaMalloc(&devOutput, pixelCount * sizeof(uchar3));
     
     // Processing
     //----------------------  
@@ -821,7 +818,7 @@ __global__ void kuwaharaFilter(uchar3 *input, int windowSize, uchar3 *out, int i
             int temp = input[loopTid].x;
             j = input[loopTid].y;
             loopTid = input[loopTid].z;
-            
+
             // Pre-processing px
             lwAverageColor[i][0] += temp;
             lwAverageColor[i][1] += j;

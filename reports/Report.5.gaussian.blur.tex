@@ -49,12 +49,6 @@
 \definecolor{mPurple}{rgb}{0.58,0,0.82}
 \definecolor{backgroundColour}{rgb}{0.95,0.95,0.92}
 
-\lstdefinestyle{DOS}
-{
-    backgroundcolor=\color{black},       
-    breaklines=true,                
-    basicstyle=\scriptsize\color{white}\ttfamily
-}
 \lstdefinestyle{CStyle}{
     backgroundcolor=\color{backgroundColour},   
     commentstyle=\color{mGreen},
@@ -79,7 +73,7 @@
 
 %%% The "real" document content comes below...
 
-\title{Report 1}
+\title{Report 5}
 \author{Arthur BRUGIERE}
 %\date{} % Activate to display a given date or no date (if empty),
          % otherwise the current date is printed 
@@ -87,41 +81,33 @@
 \begin{document}
 \maketitle
 
-\section{How you implement the conversion}
+\section{Explain how you implement the Gaussian Blur filter}
 
-Simply by adding the line {\it \#prama omp parallel for} before each loop {\it for}.
+The Gaussian blur is a type of image-blurring filter that uses a Gaussian function (which also expresses the normal distribution in statistics) for calculating the transformation to apply to each pixel in the image.
 
-The result look like this
+So, to implement it, I have create a kernel which applied for each pixels the convolution matrix below.
 
-\begin{lstlisting}[style=CStyle]
-#pragma omp parallel for
-for (int j = 0; j < 100; j++) {     // let's do it 100 times, otherwise it's too fast!
-    #pragma omp parallel for
-    for (int i = 0; i < pixelCount; i++) {
-        [CODE]
-    }
-}
-\end{lstlisting}
+\begin{table}[h]
+\begin{center}
+  \begin{tabular}{ | c | c | c | c | c | c | c | }
+    \hline
+	0 & 0 & 1 & 2 & 1 & 0 & 0 \\ \hline
+	0 & 3 & 13 & 22 & 13 & 3 & 0 \\ \hline
+	1 & 13 & 59 & 97 & 59 & 13 & 1 \\ \hline
+	2 & 22 & 97 & 159 & 97 & 22 & 2 \\ \hline
+	1 & 13 & 59 & 97 & 59 & 13 & 1 \\ \hline
+	0 & 3 & 13 & 22 & 13 & 3 & 0 \\ \hline
+	0 & 0 & 1 & 2 & 1 & 0 & 0 \\
+    \hline
+  \end{tabular}
+   \caption{Convolution matrix}
+\end{center}
+\end{table}
 
-\section{What’s the speedup?}
+As on all the previous labworks, each pixel is treated by a unique thread.
 
-\begin{lstlisting}[style=DOS]
-arthurbrugiere@ictserver3:~/advancedhpc2018/labwork/build$ ./labwork 1 ../data/eiffel.jpg 
-USTH ICT Master 2018, Advanced Programming for HPC.
-Warming up...
-Starting labwork 1
-labwork 1 CPU ellapsed 3054.5ms
-labwork 1 GPU ellapsed 746.5ms
-\end{lstlisting}
-
-The GPU's calculation time is almost the quarter of the CPU's calculation time.
-
-%\section{Try experimenting with different OpenMP parameters}
+%\section{Try experimenting with different 2D block size values}
 %
-%\subsection{Team size}
-%
-%\subsection{static / dynamic}
-%
-%\subsection{Plot a graph of team size vs speedup vs schedule}
+%\section{Plot a graph of block size vs speedup (with/without shared memory)}
 
 \end{document}
