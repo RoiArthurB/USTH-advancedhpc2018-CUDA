@@ -83,6 +83,26 @@
 
 \section{Explain how you implement the labworks}
 
+The idea in this labwork was to reduce one block (1024 threads), stock the final reduction in a shared memory and recall the kernel with the new array to reduce in parameter.
+
+To do so, the implementation in the host is a loop with the kernel inside like so :
+
+\begin{lstlisting}[style=CStyle]
+	do {
+		// Call kernel reduction
+        reduceMax<<<dimGridR, dimBlockR, dimBlockR * sizeof(int)>>>(devHisto, devMax);
+        
+        // Reduce grid size
+        dimGridR /= 2;
+
+        // Copy output to input
+        int *temp = static_cast<int *>(malloc(dimGridR * sizeof(int)));
+        cudaMemcpy(temp, devMax, dimGridR * sizeof(int), cudaMemcpyDeviceToHost);
+        cudaMemcpy(temp, devHisto, dimGridR * sizeof(int), cudaMemcpyHostToDevice);
+        
+    }while(dimBlockR < (dimBlockR*dimGridR)/2);
+\end{lstlisting}
+
 %\section{Explain and measure speedup, if you have performance optimizations}
 %
 %\section{Try experimenting with different 2D block size values}
