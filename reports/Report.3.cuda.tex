@@ -19,7 +19,7 @@
 \usepackage{paralist} % very flexible & customisable lists (eg. enumerate/itemize, etc.)
 \usepackage{verbatim} % adds environment for commenting out blocks of text & for better verbatim
 \usepackage{subfig}   % make it possible to include more than one captioned figure/table in a single float
-\usepackage{listings} % for code presentation
+
 % These packages are all incorporated in the memoir class to one degree or another...
 
 %%% HEADERS & FOOTERS
@@ -40,6 +40,35 @@
 %\renewcommand{\cftsecfont}{\rmfamily\mdseries\upshape}
 %\renewcommand{\cftsecpagefont}{\rmfamily\mdseries\upshape} % No bold!
 
+%%% DEV & CODE 
+\usepackage{xcolor}
+\usepackage{listings} % for code presentation
+
+\definecolor{mGreen}{rgb}{0,0.6,0}
+\definecolor{mGray}{rgb}{0.5,0.5,0.5}
+\definecolor{mPurple}{rgb}{0.58,0,0.82}
+\definecolor{backgroundColour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{CStyle}{
+    backgroundcolor=\color{backgroundColour},   
+    commentstyle=\color{mGreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{mGray},
+    stringstyle=\color{mPurple},
+    basicstyle=\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2,
+    language=C
+}
+
 %%% END Article customizations
 
 %%% The "real" document content comes below...
@@ -56,8 +85,7 @@
 
 The first thing that I have done to implement that labwork is to create and allocate memory for GPU's variable.
 
-\lstset{language=C}
-\begin{lstlisting}
+\begin{lstlisting}[style=CStyle]
 // Declare variable for CUDA Kernel
 uchar3 *devInput;
 uchar3 *devGray;
@@ -74,8 +102,7 @@ After that, I have to create a function (that I will call {\it kernel}) with the
 
 That function take in input the image buffer, and create in output the image grayscaled. Each thread will process only 1 pixel of the image.
 
-\lstset{language=C}
-\begin{lstlisting}
+\begin{lstlisting}[style=CStyle]
 __global__ void grayscale(uchar3 *input, uchar3 *output) {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     output[tid].x = (input[tid].x + input[tid].y + input[tid].z) / 3;
@@ -85,8 +112,7 @@ __global__ void grayscale(uchar3 *input, uchar3 *output) {
 
 Finally, I have to call that kernel in my labwork function by specifying the size of my block, of my grid and the thread's number of each blocks.
 
-\lstset{language=C}
-\begin{lstlisting}
+\begin{lstlisting}[style=CStyle]
 // Start GPU processing (KERNEL)
 int blockSize = 1024;
 int numBlock = pixelCount / blockSize;
@@ -95,8 +121,7 @@ grayscale<<<numBlock, blockSize>>>(devInput, devGray);
 
 Finally I have to copy back my image output from the GPU memory to the CPU memory.
 
-\lstset{language=C}
-\begin{lstlisting}
+\begin{lstlisting}[style=CStyle]
 // Allocate CPU memory for output image
 outputImage = static_cast<char *>(malloc(pixelCount * 3));
 
@@ -106,19 +131,18 @@ cudaMemcpy(outputImage, devGray, pixelCount * sizeof(uchar3), cudaMemcpyDeviceTo
 
 Before finishing my function, I have to free all the memory use by the CPU and GPU (here, only for the GPU).
 
-\lstset{language=C}
-\begin{lstlisting}
+\begin{lstlisting}[style=CStyle]
 // Free CUDA Memory
 cudaFree(&devInput);
 cudaFree(&devGray);
 \end{lstlisting}
 
-\section{What’s the speedup?}
-
-\section{Try experimenting with different block size values}
-
-\section{Plot a graph of block size vs speedup}
-
-\section{Discuss the graph}
+%\section{What’s the speedup?}
+%
+%\section{Try experimenting with different block size values}
+%
+%\section{Plot a graph of block size vs speedup}
+%
+%\section{Discuss the graph}
 
 \end{document}

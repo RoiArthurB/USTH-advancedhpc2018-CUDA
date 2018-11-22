@@ -49,12 +49,6 @@
 \definecolor{mPurple}{rgb}{0.58,0,0.82}
 \definecolor{backgroundColour}{rgb}{0.95,0.95,0.92}
 
-\lstdefinestyle{DOS}
-{
-    backgroundcolor=\color{black},       
-    breaklines=true,                
-    basicstyle=\scriptsize\color{white}\ttfamily
-}
 \lstdefinestyle{CStyle}{
     backgroundcolor=\color{backgroundColour},   
     commentstyle=\color{mGreen},
@@ -79,7 +73,7 @@
 
 %%% The "real" document content comes below...
 
-\title{Report 1}
+\title{Report 8}
 \author{Arthur BRUGIERE}
 %\date{} % Activate to display a given date or no date (if empty),
          % otherwise the current date is printed 
@@ -87,41 +81,75 @@
 \begin{document}
 \maketitle
 
-\section{How you implement the conversion}
+\section{Explain how you implement the labworks}
 
-Simply by adding the line {\it \#prama omp parallel for} before each loop {\it for}.
-
-The result look like this
+The first step was to create an Structure of Array (SoA) to populate it with the HSV parameters of my image
 
 \begin{lstlisting}[style=CStyle]
-#pragma omp parallel for
-for (int j = 0; j < 100; j++) {     // let's do it 100 times, otherwise it's too fast!
-    #pragma omp parallel for
-    for (int i = 0; i < pixelCount; i++) {
-        [CODE]
-    }
+typedef struct hsv {
+    double *h, *s, *v;
+} Hsv ;
+\end{lstlisting}
+
+After that, I had to allocate memory to that structure on the GPU side. To allocate memory on the good way, I have to allocate memory to each array in my structure (and not only to my structure). 
+
+\begin{lstlisting}[style=CStyle]
+Hsv hsvArray;
+
+// Malloc arrays inside the structure
+cudaMalloc((void**)&hsvArray.h, pixelCount * sizeof(double));
+cudaMalloc((void**)&hsvArray.s, pixelCount * sizeof(double));
+cudaMalloc((void**)&hsvArray.v, pixelCount * sizeof(double));
+
+	[...]
+
+cudaFree(hsvArray.h);
+cudaFree(hsvArray.s);
+cudaFree(hsvArray.v);
+\end{lstlisting}
+
+For the other part of this labwork, nothing really important to tell. I implemented what was written in the slides. That labwork is also a Mapping processing algorithm, so {\it One thread = One pixel}.
+
+\section{Explain and measure speedup, if you have performance optimizations}
+
+\subsection{RGB2HSV}
+
+The first thing was to save input pixel to local variables. This way, the thread won't be limited by memory speed limit of the image during the pixel processing. Also, values are pre-processing to gain some nano-seconds.
+
+\begin{lstlisting}[style=CStyle]
+double pixelR = (double)in[tid].x / 255.0;
+double pixelG = (double)in[tid].y / 255.0;
+double pixelB = (double)in[tid].z / 255.0;
+\end{lstlisting}
+
+The second thing was to optimize my variable usage (the less I use, the better my algorithm will be). I create a variable only if a same value will be called/processed/other more than once, and I reuse variable if I have no more use of their previous values.\footnote{I know and I agree that it leaves to a less readable code, but my only focus was to optimize my code and my memory usage. So it was a good way to achieve it.}
+
+The third was to process my algorithm only if it needed :
+
+The case is, if a pixel is black, my algorithm will saw it before processing the pixel (because {\it S = 0}) and end with a black pixel.
+
+\begin{lstlisting}[style=CStyle]
+if( pxMax <= 0.0 ) { // NOTE: if Max is == 0, this divide would cause a crash
+	// if max is 0, then r = g = b = 0              
+	// s = 0, h is undefined
+	out.h[tid] = 0.0;
+	out.s[tid] = 0.0;
+	out.v[tid] = 0.0;
+
+	return;
 }
 \end{lstlisting}
 
-\section{What’s the speedup?}
+\subsection{HSV2RGB}
 
-\begin{lstlisting}[style=DOS]
-arthurbrugiere@ictserver3:~/advancedhpc2018/labwork/build$ ./labwork 1 ../data/eiffel.jpg 
-USTH ICT Master 2018, Advanced Programming for HPC.
-Warming up...
-Starting labwork 1
-labwork 1 CPU ellapsed 3054.5ms
-labwork 1 GPU ellapsed 746.5ms
+The first thing was to save pixel value to local variables.
+
+\begin{lstlisting}[style=CStyle]
+double pixelH = in.h[tid];
+double pixelS = in.s[tid];
+double pixelV = in.v[tid];
 \end{lstlisting}
 
-The GPU's calculation time is almost the quarter of the CPU's calculation time.
-
-%\section{Try experimenting with different OpenMP parameters}
-%
-%\subsection{Team size}
-%
-%\subsection{static / dynamic}
-%
-%\subsection{Plot a graph of team size vs speedup vs schedule}
+The second thing was to optimize my variable usage (same as before).
 
 \end{document}

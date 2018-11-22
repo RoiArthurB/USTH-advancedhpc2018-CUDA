@@ -49,12 +49,6 @@
 \definecolor{mPurple}{rgb}{0.58,0,0.82}
 \definecolor{backgroundColour}{rgb}{0.95,0.95,0.92}
 
-\lstdefinestyle{DOS}
-{
-    backgroundcolor=\color{black},       
-    breaklines=true,                
-    basicstyle=\scriptsize\color{white}\ttfamily
-}
 \lstdefinestyle{CStyle}{
     backgroundcolor=\color{backgroundColour},   
     commentstyle=\color{mGreen},
@@ -79,7 +73,7 @@
 
 %%% The "real" document content comes below...
 
-\title{Report 1}
+\title{Report 6}
 \author{Arthur BRUGIERE}
 %\date{} % Activate to display a given date or no date (if empty),
          % otherwise the current date is printed 
@@ -87,41 +81,54 @@
 \begin{document}
 \maketitle
 
-\section{How you implement the conversion}
+\section{Explain how you implement the labworks}
 
-Simply by adding the line {\it \#prama omp parallel for} before each loop {\it for}.
+Because each processing that we had to implement in this labwork are Map Processing, each one was implemented in different Kernel. Each kernel is called with the most optimized parameters (2D blocks of 32x32 threads on a 2D grid). 
 
-The result look like this
+\subsection{Binarization}
+
+The CPU call the kernel and all the processing work is on the GPU side :
 
 \begin{lstlisting}[style=CStyle]
-#pragma omp parallel for
-for (int j = 0; j < 100; j++) {     // let's do it 100 times, otherwise it's too fast!
-    #pragma omp parallel for
-    for (int i = 0; i < pixelCount; i++) {
-        [CODE]
-    }
-}
+//Process pixel
+output[tid].z = output[tid].y = output[tid].x = 
+		(((int)(input[tid].x + input[tid].y + input[tid].z) / 3)/127)*255;
 \end{lstlisting}
 
-\section{What’s the speedup?}
+\subsection{Brightness control}
 
-\begin{lstlisting}[style=DOS]
-arthurbrugiere@ictserver3:~/advancedhpc2018/labwork/build$ ./labwork 1 ../data/eiffel.jpg 
-USTH ICT Master 2018, Advanced Programming for HPC.
-Warming up...
-Starting labwork 1
-labwork 1 CPU ellapsed 3054.5ms
-labwork 1 GPU ellapsed 746.5ms
+The CPU call the kernel and all the processing work is on the GPU side :
+
+\begin{lstlisting}[style=CStyle]
+//Process pixel
+output[tid].x = min(255, max(0, input[tid].x + value));
+output[tid].y = min(255, max(0, input[tid].y + value));
+output[tid].z = min(255, max(0, input[tid].z + value));  
 \end{lstlisting}
 
-The GPU's calculation time is almost the quarter of the CPU's calculation time.
+\subsection{Blending images}
 
-%\section{Try experimenting with different OpenMP parameters}
-%
-%\subsection{Team size}
-%
-%\subsection{static / dynamic}
-%
-%\subsection{Plot a graph of team size vs speedup vs schedule}
+For this kernel, it had a little difficulty : I had to get a second image. I've did it on the CPU side and send my second image in the same way than the first one.
+
+\begin{lstlisting}[style=CStyle]
+uchar3 *secondImg;
+
+cudaMalloc(&secondImg, pixelCount * sizeof(uchar3));
+cudaMemcpy(secondImg, inputSecondImage->buffer, pixelCount * sizeof(uchar3), cudaMemcpyHostToDevice);
+\end{lstlisting}
+
+After that, the CPU call the kernel and all the processing work is on the GPU side :
+
+\begin{lstlisting}[style=CStyle]
+//Process pixel
+output[tid].x = (weight * (double)input[tid].x) 
+			+ ((1.0 - weight) * (double)secondImg[tid].x);
+output[tid].y = (weight * (double)input[tid].y) 
+			+ ((1.0 - weight) * (double)secondImg[tid].y);
+output[tid].z = (weight * (double)input[tid].z) 
+			+ ((1.0 - weight) * (double)secondImg[tid].z);
+\end{lstlisting}
+
+%\section{Try experimenting with different 2D block size values}
 
 \end{document}
